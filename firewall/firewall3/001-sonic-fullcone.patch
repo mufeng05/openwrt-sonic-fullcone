@@ -1,0 +1,134 @@
+From: openwrt-sonic-fullcone contributors
+Date: Wed, 9 Apr 2026 00:00:00 +0000
+Subject: [PATCH] firewall3: add SONiC fullcone NAT with per-zone and
+ per-protocol control
+
+Adds zone-level fullcone option and fullcone_proto list to firewall3.
+When enabled, MASQUERADE --fullcone rules are generated. When
+fullcone_proto is set, only matching protocols use fullcone; the rest
+falls back to standard MASQUERADE.
+
+Example config:
+  config zone 'wan'
+    option fullcone '1'
+    list fullcone_proto 'udp'
+
+Requires the 901-sonic-fullcone iptables patch for --fullcone support.
+---
+ defaults.c |  2 ++
+ options.h  |  8 ++++++++
+ zones.c    | 55 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 65 insertions(+)
+
+--- a/defaults.c
++++ b/defaults.c
+@@ -46,6 +46,8 @@ const struct fw3_option fw3_flag_opts[]
+ 	FW3_OPT("synflood_protect",    bool,     defaults, syn_flood),
+ 	FW3_OPT("synflood_rate",       limit,    defaults, syn_flood_rate),
+ 	FW3_OPT("synflood_burst",      int,      defaults, syn_flood_rate.burst),
++
++	FW3_OPT("fullcone",           bool,     defaults, fullcone),
+
+ 	FW3_OPT("tcp_syncookies",      bool,     defaults, tcp_syncookies),
+ 	FW3_OPT("tcp_ecn",             int,      defaults, tcp_ecn),
+--- a/options.h
++++ b/options.h
+@@ -267,6 +267,7 @@ struct fw3_defaults
+ 	bool drop_invalid;
+
+ 	bool syn_flood;
++	bool fullcone;
+ 	struct fw3_limit syn_flood_rate;
+
+ 	bool tcp_syncookies;
+--- a/zones.c
++++ b/zones.c
+@@ -27,6 +27,9 @@
+ #define C(f, tbl, tgt, fmt) \
+ 	{ FW3_FAMILY_##f, FW3_TABLE_##tbl, FW3_FLAG_##tgt, fmt }
+
++/* Maximum number of fullcone_proto entries */
++#define FW3_FULLCONE_PROTO_MAX 8
++
+ static const struct fw3_chain_spec zone_chains[] = {
+ 	C(ANY, FILTER, UNSPEC,        "zone_%1$s_input"),
+ 	C(ANY, FILTER, UNSPEC,        "zone_%1$s_output"),
+@@ -627,6 +630,10 @@ print_zone_rule(struct fw3_ipt_handle *h
+ 	struct fw3_address *msrc;
+ 	struct fw3_address *mdest;
+ 	struct fw3_ipt_rule *r;
++	struct fw3_defaults *defs = &state->defaults;
++	bool zone_fullcone = false;
++	const char *fullcone_protos[FW3_FULLCONE_PROTO_MAX] = {};
++	int n_fc_protos = 0;
+
+ 	if (!fw3_is_family(zone, handle->family))
+ 		return;
+@@ -634,6 +641,30 @@ print_zone_rule(struct fw3_ipt_handle *h
+ 	if (!fw3_is_family(zone, handle->family))
+ 		return;
+
++	/* Parse per-zone fullcone options from UCI.
++	 * Zone-level 'fullcone' overrides defaults.fullcone.
++	 * 'fullcone_proto' restricts fullcone to specific L4 protocols.
++	 */
++	{
++		struct uci_element *e;
++		const char *val;
++		val = uci_lookup_option_string(state->uci, zone->section, "fullcone");
++		if (val)
++			zone_fullcone = fw3_parse_bool(val);
++		else
++			zone_fullcone = defs->fullcone;
++
++		struct uci_option *o;
++		o = uci_lookup_option(state->uci, zone->section, "fullcone_proto");
++		if (o && o->type == UCI_TYPE_LIST) {
++			uci_foreach_element(&o->v.list, e) {
++				if (n_fc_protos < FW3_FULLCONE_PROTO_MAX)
++					fullcone_protos[n_fc_protos++] = e->name;
++			}
++		}
++	}
++
+ 	switch (handle->table)
+ 	{
+ 	case FW3_TABLE_FILTER:
+@@ -712,8 +743,32 @@ print_zone_rule(struct fw3_ipt_handle *h
+ 				{
+ 					r = fw3_ipt_rule_new(handle);
+ 					fw3_ipt_rule_src_dest(r, msrc, mdest);
+-					fw3_ipt_rule_target(r, "MASQUERADE");
+-					fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
++					if (zone_fullcone && n_fc_protos > 0)
++					{
++						/* Per-proto fullcone: emit one rule per proto, then fallback masq */
++						int p;
++						for (p = 0; p < n_fc_protos; p++) {
++							r = fw3_ipt_rule_new(handle);
++							fw3_ipt_rule_src_dest(r, msrc, mdest);
++							fw3_ipt_rule_proto(r, fullcone_protos[p]);
++							fw3_ipt_rule_target(r, "MASQUERADE");
++							fw3_ipt_rule_extra(r, "--fullcone");
++							fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
++						}
++						/* Fallback: non-fullcone protos get standard masquerade */
++						r = fw3_ipt_rule_new(handle);
++						fw3_ipt_rule_src_dest(r, msrc, mdest);
++						fw3_ipt_rule_target(r, "MASQUERADE");
++						fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
++					}
++					else if (zone_fullcone)
++					{
++						fw3_ipt_rule_target(r, "MASQUERADE");
++						fw3_ipt_rule_extra(r, "--fullcone");
++						fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
++					}
++					else
++					{
++						fw3_ipt_rule_target(r, "MASQUERADE");
++						fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
++					}
+ 				}
+ 			}
+ 		}

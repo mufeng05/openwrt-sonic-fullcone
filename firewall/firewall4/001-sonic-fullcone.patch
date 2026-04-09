@@ -1,0 +1,212 @@
+From: openwrt-sonic-fullcone contributors
+Date: Wed, 9 Apr 2026 00:00:00 +0000
+Subject: [PATCH] firewall4: add SONiC fullcone NAT with per-zone and
+ per-protocol granularity
+
+Adds fullcone NAT support to firewall4 with three levels of control:
+
+  1. Global default:  config defaults / option fullcone 1
+  2. Per-zone:        config zone / option fullcone 1
+  3. Per-protocol:    config zone / list fullcone_proto udp
+
+When fullcone_proto is specified, only matching L4 protocols use the
+fullcone expression; remaining traffic falls through to standard
+masquerade. When fullcone_proto is absent, all traffic is fullcone'd.
+
+Zone-level fullcone overrides the global default. If neither is set,
+standard masquerade is used.
+
+Requires kernel module nft_fullcone (from 985-add-sonic-fullcone-to-nft
+patch) and the corresponding libnftnl/nftables userspace patches.
+---
+ root/usr/share/firewall4/templates/ruleset.uc      |   56 +++++++++++-
+ root/usr/share/firewall4/templates/zone-fullcone.uc |    5 +
+ root/usr/share/ucode/fw4.uc                         |  107 +++++++++++++++++++-
+ 3 files changed, 163 insertions(+), 5 deletions(-)
+ create mode 100644 root/usr/share/firewall4/templates/zone-fullcone.uc
+
+--- a/root/usr/share/firewall4/templates/ruleset.uc
++++ b/root/usr/share/firewall4/templates/ruleset.uc
+@@ -327,6 +327,18 @@ table inet fw4 {
+ {%   for (let redirect in fw4.redirects(`dstnat_${zone.name}`)): %}
+ 		{%+ include("redirect.uc", { fw4, zone, redirect }) %}
+ {%   endfor %}
++{%   if (zone.masq && zone.fullcone): %}
++{%    if (zone.fullcone_proto && length(zone.fullcone_proto)): %}
++{%     for (let proto in zone.fullcone_proto): %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "dstnat", proto }) %}
++{%     endfor %}
++{%    else %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "dstnat", proto: null }) %}
++{%    endif %}
++{%   endif %}
++{%   if (zone.masq6 && zone.fullcone6): %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "dstnat", proto: null }) %}
++{%   endif %}
+ {%   fw4.includes('chain-append', `dstnat_${zone.name}`) %}
+ 	}
+
+@@ -337,20 +349,48 @@ table inet fw4 {
+ {%   for (let redirect in fw4.redirects(`srcnat_${zone.name}`)): %}
+ 		{%+ include("redirect.uc", { fw4, zone, redirect }) %}
+ {%   endfor %}
+-{%   if (zone.masq): %}
++{%   if (zone.masq && zone.fullcone): %}
++{%    if (zone.fullcone_proto && length(zone.fullcone_proto)): %}
++{%     for (let proto in zone.fullcone_proto): %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "srcnat", proto }) %}
++{%     endfor %}
++{%     for (let saddrs in zone.masq4_src_subnets): %}
++{%      for (let daddrs in zone.masq4_dest_subnets): %}
++		{%+ include("zone-masq.uc", { fw4, zone, family: 4, saddrs, daddrs }) %}
++{%      endfor %}
++{%     endfor %}
++{%    else %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "srcnat", proto: null }) %}
++{%    endif %}
++{%   elif (zone.masq): %}
+ {%    for (let saddrs in zone.masq4_src_subnets): %}
+ {%     for (let daddrs in zone.masq4_dest_subnets): %}
+ 		{%+ include("zone-masq.uc", { fw4, zone, family: 4, saddrs, daddrs }) %}
+ {%     endfor %}
+ {%    endfor %}
+ {%   endif %}
+-{%   if (zone.masq6): %}
++{%   if (zone.masq6 && zone.fullcone6): %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "srcnat", proto: null }) %}
++{%   elif (zone.masq6): %}
+ {%    for (let saddrs in zone.masq6_src_subnets): %}
+ {%     for (let daddrs in zone.masq6_dest_subnets): %}
+ 		{%+ include("zone-masq.uc", { fw4, zone, family: 6, saddrs, daddrs }) %}
+ {%     endfor %}
+ {%    endfor %}
+ {%   endif %}
++{%   if (zone.masq6 && zone.fullcone6): %}
++{%   endif %}
+ {%   fw4.includes('chain-append', `srcnat_${zone.name}`) %}
+ 	}
+
+--- /dev/null
++++ b/root/usr/share/firewall4/templates/zone-fullcone.uc
+@@ -0,0 +1,5 @@
++{# /usr/share/firewall4/templates/zone-fullcone.uc #}
++		meta nfproto {{ fw4.nfproto(family) }}{{
++		proto ? ` meta l4proto ${proto}` : ''
++		}} fullcone comment "!fw4: {{ zone.name }} {{ fw4.nfproto(family, true) }} fullcone{{
++		proto ? ` ${proto}` : '' }} NAT {{ direction }}"
+--- a/root/usr/share/ucode/fw4.uc
++++ b/root/usr/share/ucode/fw4.uc
+@@ -489,6 +489,25 @@ function nft_try_hw_offload(devices) {
+ 	return (rc == 0);
+ }
+
++function nft_try_fullcone() {
++	let nft_test =
++		'add table inet fw4-fullcone-test; ' +
++		'add chain inet fw4-fullcone-test dstnat { ' +
++			'type nat hook prerouting priority -100; policy accept; ' +
++			'fullcone; ' +
++		'}; ' +
++		'add chain inet fw4-fullcone-test srcnat { ' +
++			'type nat hook postrouting priority -100; policy accept; ' +
++			'fullcone; ' +
++		'}; ';
++	let cmd = sprintf("/usr/sbin/nft -c '%s' 2>/dev/null", replace(nft_test, "'", "'\\''"));
++	let ok = system(cmd) == 0;
++	if (!ok) {
++		warn("nft_try_fullcone: fullcone expression not available in kernel\n");
++	}
++	return ok;
++}
++
+
+ return {
+ 	read_kernel_version: function() {
+@@ -1475,6 +1494,7 @@ return {
+ 			"dnat",
+ 			"snat",
+ 			"masquerade",
++			"fullcone",
+ 			"accept",
+ 			"reject",
+ 			"drop"
+@@ -1946,6 +1966,8 @@ return {
+ 		}
+
+ 		let defs = this.parse_options(data, {
++			fullcone: [ "bool", "0" ],
++			fullcone6: [ "bool", "0" ],
+ 			input: [ "policy", "drop" ],
+ 			output: [ "policy", "drop" ],
+ 			forward: [ "policy", "drop" ],
+@@ -1980,6 +2002,14 @@ return {
+
+ 		delete defs.syn_flood;
+
++		if (defs.fullcone || defs.fullcone6) {
++			if (!nft_try_fullcone()) {
++				defs.fullcone = false;
++				defs.fullcone6 = false;
++				warn("fullcone expression not available, disabling fullcone globally\n");
++			}
++		}
++
+ 		this.state.defaults = defs;
+ 	},
+
+@@ -2149,6 +2179,30 @@ return {
+ 			}
+ 		}
+
++		/* SONiC fullcone: parse per-zone options.
++		 * zone.fullcone overrides defaults.fullcone.
++		 * zone.fullcone_proto is a list of L4 protocol names
++		 * (e.g. ["udp"]) — when set, only those protocols get
++		 * fullcone; the rest falls through to standard masquerade.
++		 */
++		let zone_fullcone = this.parse_option(data, "fullcone", "bool");
++		let zone_fullcone6 = this.parse_option(data, "fullcone6", "bool");
++
++		if (zone_fullcone != null)
++			zone.fullcone = zone_fullcone;
++		else
++			zone.fullcone = this.state.defaults.fullcone ?? false;
++
++		if (zone_fullcone6 != null)
++			zone.fullcone6 = zone_fullcone6;
++		else
++			zone.fullcone6 = this.state.defaults.fullcone6 ?? false;
++
++		let fc_proto = this.parse_option(data, "fullcone_proto", "list");
++		zone.fullcone_proto = (fc_proto && length(fc_proto)) ? fc_proto : null;
++
++		if (zone.fullcone)
++			this.warn_section(data, "fullcone enabled" + (zone.fullcone_proto ? ` for ${join(', ', zone.fullcone_proto)}` : ""));
++
+ 		if (zone.mtu_fix && this.kernel < 0x040a0000) {
+ 			this.warn_section(data, "option mtu_fix requires kernel 4.10 or later, ignoring");
+ 			return;
+@@ -2205,10 +2259,23 @@ return {
+ 		zone.related_subnets = related_subnets;
+ 		zone.related_physdevs = related_physdevs;
+
+-		if (zone.masq || zone.masq6)
++		if (zone.masq) {
+ 			zone.dflags.snat = true;
++			if (zone.fullcone)
++				zone.dflags.dnat = true;
++		}
++
++		if (zone.masq6) {
++			zone.dflags.snat = true;
++			if (zone.fullcone6)
++				zone.dflags.dnat = true;
++		}
+
+-		if ((zone.auto_helper && !(zone.masq || zone.masq6)) || length(zone.helper)) {
++		if ((zone.auto_helper && !(zone.masq || zone.masq6 ||
++		     zone.fullcone || zone.fullcone6)) ||
++		    length(zone.helper)) {
+ 			zone.dflags.helper = true;
+
+ 			for (let helper in (length(zone.helper) ? zone.helper : this.state.helpers)) {
