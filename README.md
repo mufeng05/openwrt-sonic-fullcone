@@ -1,49 +1,82 @@
 # openwrt-sonic-fullcone
 
-SONiC-style Full Cone NAT for OpenWrt, with per-zone and per-protocol granularity.
+适用于 OpenWrt 的 SONiC 风格全锥形 NAT（Full Cone NAT），支持 per-zone 和 per-protocol 粒度控制。
 
-## What is this
+## 这是什么
 
-A forward-port of [SONiC's fullcone NAT kernel patch](https://github.com/sonic-net/sonic-linux-kernel/blob/master/patches-sonic/Support-for-fullcone-nat.patch) (by Akhilesh Samineni / Broadcom) to OpenWrt, plus firewall integration that supports fine-grained control.
+将 [SONiC 的 fullcone NAT 内核补丁](https://github.com/sonic-net/sonic-linux-kernel/blob/master/patches-sonic/Support-for-fullcone-nat.patch)（Akhilesh Samineni / Broadcom）移植到 OpenWrt，并集成了支持细粒度控制的防火墙和 LuCI 界面。
 
-### How it works
+### 工作原理
 
-The kernel patch adds a second hash table inside conntrack (`nat_by_manip_src`) indexed by the **translated 3-tuple** (protocol, source IP, source port). This gives:
+内核补丁在 conntrack 内部增加了第二张哈希表（`nat_by_manip_src`），以**转换后的 3-tuple**（协议、源 IP、源端口）为索引：
 
-- **SNAT**: 3-tuple uniqueness — the same (proto, src_ip, src_port) is never reused across different connections, enabling Endpoint-Independent Mapping (EIM).
-- **DNAT**: reverse lookup — inbound packets are matched against the hash to find the original internal host, enabling Endpoint-Independent Filtering (EIF).
-- **All L4 protocols**: TCP, UDP, ICMP, GRE, SCTP, DCCP, UDPlite.
-- **Zero overhead for non-fullcone flows**: the fullcone flag is per-rule, not global.
+- **SNAT 方向**：3-tuple 唯一性保证——同一个 (proto, src_ip, src_port) 不会被不同连接复用，实现端点无关映射（EIM）
+- **DNAT 方向**：反向查找——入站数据包通过哈希表找到原始内部主机，实现端点无关过滤（EIF）
+- **全 L4 协议支持**：TCP、UDP、ICMP、GRE、SCTP、DCCP、UDPlite
+- **非 fullcone 流量零开销**：fullcone 标志位是 per-rule 的，不是全局的
 
-### Supported kernel versions
+### 支持的内核版本
 
-6.6, 6.12, 6.18 (same patch for all three — the relevant nf_nat_core.c structure is identical).
+6.6、6.12、6.18（三个版本共用同一份补丁——相关的 nf_nat_core.c 结构完全一致）
 
-## Install
+## 安装
 
 ```bash
 cd /path/to/openwrt-source
 
-# Update feeds first (needed for LuCI patch)
+# 先更新 feeds（LuCI 补丁需要）
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
-# Clone this repo
+# 克隆本仓库
 git clone https://github.com/user/openwrt-sonic-fullcone /tmp/openwrt-sonic-fullcone
 
-# Apply patches
+# 应用补丁
 bash /tmp/openwrt-sonic-fullcone/add_sonic_fullcone.sh
 
-# Build
-make menuconfig   # nothing extra to select — patches are applied directly
+# 编译
+make menuconfig   # 无需额外勾选，补丁直接应用到源码树
 make -j$(nproc)
 ```
 
-## Configuration
+## 配置
 
-### Level 1: Global default
+### 方式一：Web 界面（LuCI）
 
-Enable fullcone for all zones that have masquerading:
+LuCI 补丁将 fullcone 选项直接集成到 OpenWrt 原生防火墙配置页面中，无需安装额外的 LuCI 应用。
+
+**全局设置**（网络 → 防火墙 → 常规设置）：
+- "Fullcone NAT" 复选框 — 为所有启用了伪装（Masquerading）的 zone 开启全锥形 NAT
+
+**Zone 设置**（网络 → 防火墙 → 区域 → 编辑）：
+- **常规标签**："Fullcone NAT" 复选框（仅在开启伪装时显示）
+- **高级标签**："Fullcone protocols" 多选框（TCP、UDP、UDP-Lite、SCTP、DCCP）
+
+### 方式二：UCI 命令行
+
+```bash
+# 全局启用
+uci set firewall.@defaults[0].fullcone='1'
+
+# 仅对 wan zone 启用
+uci set firewall.@zone[1].fullcone='1'
+
+# 仅对 UDP 启用 fullcone（推荐用于游戏/P2P）
+uci add_list firewall.@zone[1].fullcone_proto='udp'
+
+# 应用
+uci commit firewall
+/etc/init.d/firewall restart
+
+# 验证
+nft list ruleset | grep fullcone
+```
+
+### 方式三：UCI 配置文件
+
+#### Level 1：全局默认
+
+为所有启用伪装的 zone 开启 fullcone：
 
 ```
 # /etc/config/firewall
@@ -51,49 +84,49 @@ config defaults
     option fullcone '1'
 ```
 
-### Level 2: Per-zone
+#### Level 2：Per-zone
 
-Enable fullcone only on the WAN zone:
+仅对 WAN zone 启用：
 
 ```
 config defaults
-    # fullcone NOT set here
+    # 这里不设 fullcone
 
 config zone
     option name 'wan'
     option masq '1'
-    option fullcone '1'        # only this zone gets fullcone
+    option fullcone '1'        # 仅此 zone 启用 fullcone
 ```
 
-### Level 3: Per-protocol
+#### Level 3：Per-protocol
 
-Enable fullcone only for UDP (recommended for gaming / P2P):
+仅对 UDP 启用（推荐用于游戏/P2P 场景）：
 
 ```
 config zone
     option name 'wan'
     option masq '1'
     option fullcone '1'
-    list fullcone_proto 'udp'  # only UDP gets fullcone
+    list fullcone_proto 'udp'  # 仅 UDP 走 fullcone
 ```
 
-Generated nftables rules:
+生成的 nftables 规则：
 
-```
+```nft
 chain srcnat_wan {
     # UDP → fullcone
     meta nfproto ipv4 meta l4proto udp fullcone comment "!fw4: wan IPv4 fullcone udp NAT srcnat"
-    # Everything else → standard masquerade
+    # 其余流量 → 标准 masquerade
     meta nfproto ipv4 masquerade comment "!fw4: wan IPv4 masquerade"
 }
 
 chain dstnat_wan {
-    # Only UDP gets reverse fullcone mapping
+    # 仅 UDP 做反向 fullcone 映射
     meta nfproto ipv4 meta l4proto udp fullcone comment "!fw4: wan IPv4 fullcone udp NAT dstnat"
 }
 ```
 
-Multiple protocols:
+多协议：
 
 ```
 config zone
@@ -104,11 +137,11 @@ config zone
     list fullcone_proto 'tcp'
 ```
 
-### Level 4: Advanced — raw nftables rules
+#### Level 4：高级 — 手写 nftables 规则
 
-For arbitrary matching (by source subnet, port range, etc.), use fw4 includes or `/etc/nftables.d/`:
+如需按源网段、端口范围等任意条件匹配，可使用 fw4 includes 或 `/etc/nftables.d/`：
 
-```
+```nft
 # /etc/nftables.d/10-fullcone-custom.nft
 table inet fullcone-custom {
     chain srcnat {
@@ -122,77 +155,44 @@ table inet fullcone-custom {
 }
 ```
 
-Note: when using raw rules, disable fw4's fullcone for that zone to avoid conflicts.
+注意：使用自定义规则时，应关闭该 zone 的 fw4 fullcone 选项以避免冲突。
 
-## UCI commands
-
-```bash
-# Enable fullcone globally
-uci set firewall.@defaults[0].fullcone='1'
-
-# Enable per-zone
-uci set firewall.@zone[1].fullcone='1'
-
-# Restrict to UDP only
-uci add_list firewall.@zone[1].fullcone_proto='udp'
-
-# Apply
-uci commit firewall
-/etc/init.d/firewall restart
-
-# Verify
-nft list ruleset | grep fullcone
-```
-
-## Web Interface (LuCI)
-
-The LuCI patch adds fullcone options to the standard firewall configuration pages:
-
-**General Settings** (Network → Firewall → General Settings):
-- "Fullcone NAT" checkbox — global default for all zones
-
-**Zone Settings** (Network → Firewall → Zones → Edit):
-- **General tab**: "Fullcone NAT" checkbox (appears when Masquerading is enabled)
-- **Advanced tab**: "Fullcone protocols" multi-select (TCP, UDP, UDP-Lite, SCTP, DCCP)
-
-No separate LuCI app is needed — everything integrates into the existing firewall pages.
-
-## Files
+## 文件说明
 
 ```
 kernel/
-  984-add-sonic-fullcone-support.patch      # nf_nat_core.c: 3-tuple hash, EIM/EIF
-  985-add-sonic-fullcone-to-nft.patch       # nft_fullcone.c: nftables expression + Kconfig
+  984-add-sonic-fullcone-support.patch      # nf_nat_core.c：3-tuple 哈希表、EIM/EIF
+  985-add-sonic-fullcone-to-nft.patch       # nft_fullcone.c：nftables 表达式 + Kconfig
 
 patches/
-  iptables/901-sonic-fullcone.patch         # libipt_MASQUERADE --fullcone flag
-  libnftnl/001-libnftnl-*.patch             # fullcone expression serialization
-  nftables/002-nftables-*.patch             # nft CLI "fullcone" keyword
-  luci-app-firewall/001-add-*.patch         # LuCI web interface integration
+  iptables/901-sonic-fullcone.patch         # libipt_MASQUERADE --fullcone 标志
+  libnftnl/001-libnftnl-*.patch             # fullcone 表达式序列化
+  nftables/002-nftables-*.patch             # nft CLI "fullcone" 关键字
+  luci-app-firewall/001-add-*.patch         # LuCI Web 界面集成
 
 firewall/
-  firewall3/001-sonic-fullcone.patch        # fw3: per-zone + per-proto
-  firewall4/001-sonic-fullcone.patch        # fw4: per-zone + per-proto
+  firewall3/001-sonic-fullcone.patch        # fw3：per-zone + per-proto
+  firewall4/001-sonic-fullcone.patch        # fw4：per-zone + per-proto
 ```
 
-## Comparison with other fullcone implementations
+## 与其他 fullcone 实现的对比
 
-| | SONiC (this) | xt_FULLCONENAT | nft-fullcone | bcm-fullconenat |
+| | SONiC（本项目） | xt_FULLCONENAT | nft-fullcone | bcm-fullconenat |
 |---|---|---|---|---|
-| Mapping storage | In conntrack itself | Parallel hash table | Parallel hash table | conntrack expectations |
-| Read-path lock | RCU (no spinlock) | Global spinlock | Global spinlock | Global expect lock |
-| Lookup | O(1) hash | O(1) hash | O(1) hash | **O(N) full scan** |
-| Protocols | All L4 | UDP only | UDP only | UDP only |
-| Cleanup | Automatic (conntrack lifecycle) | Workqueue GC | Workqueue GC | Expectation timeout |
-| Per-rule control | Yes (flag bit) | No (target replacement) | No (expression replacement) | No (masquerade mode) |
+| 映射存储 | conntrack 自身内 | 平行哈希表 | 平行哈希表 | conntrack 期望表 |
+| 读路径锁 | RCU（无自旋锁） | 全局自旋锁 | 全局自旋锁 | 全局 expect 锁 |
+| 查找复杂度 | O(1) 哈希 | O(1) 哈希 | O(1) 哈希 | **O(N) 全表扫描** |
+| 协议支持 | 全部 L4 | 仅 UDP | 仅 UDP | 仅 UDP |
+| 清理机制 | 自动（conntrack 生命周期） | Workqueue GC | Workqueue GC | 期望超时 |
+| Per-rule 控制 | 支持（flag bit） | 不支持 | 不支持 | 不支持 |
 
-## Credits
+## 致谢
 
-- Kernel patch: Akhilesh Samineni (Broadcom) via [sonic-net/sonic-linux-kernel](https://github.com/sonic-net/sonic-linux-kernel)
-- nftables/libnftnl expression interface: Syrone Wong (fullcone-nat-nftables)
-- OpenWrt integration: openwrt-sonic-fullcone contributors
+- 内核补丁：Akhilesh Samineni (Broadcom)，来自 [sonic-net/sonic-linux-kernel](https://github.com/sonic-net/sonic-linux-kernel)
+- nftables/libnftnl 表达式接口：Syrone Wong (fullcone-nat-nftables)
+- OpenWrt 集成：openwrt-sonic-fullcone contributors
 
-## License
+## 许可证
 
-Kernel patches: GPL-2.0 (follows Linux kernel license)
-Userspace patches: GPL-2.0
+内核补丁：GPL-2.0（遵循 Linux 内核许可证）
+用户态补丁：GPL-2.0
