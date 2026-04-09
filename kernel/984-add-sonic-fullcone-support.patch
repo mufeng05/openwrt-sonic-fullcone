@@ -28,6 +28,18 @@ Signed-off-by: Akhilesh Samineni <akhilesh.samineni@broadcom.com>
  net/netfilter/nf_nat_core.c           | 222 ++++++++++++++++++++---
  3 files changed, 197 insertions(+), 31 deletions(-)
 
+--- a/include/net/netfilter/nf_conntrack.h
++++ b/include/net/netfilter/nf_conntrack.h
+@@ -103,6 +103,9 @@ struct nf_conn {
+
+ #if IS_ENABLED(CONFIG_NF_NAT)
+ 	struct hlist_node	nat_bysource;
++
++	/* To optionally ensure 3-tuple uniqueness on the translated source */
++	struct hlist_node	nat_by_manip_src;
+ #endif
+ 	/* all members below initialized via memset */
+ 	struct { } __nfct_init_offset;
 --- a/include/uapi/linux/netfilter/nf_nat.h
 +++ b/include/uapi/linux/netfilter/nf_nat.h
 @@ -12,6 +12,7 @@
@@ -47,18 +59,6 @@ Signed-off-by: Akhilesh Samineni <akhilesh.samineni@broadcom.com>
 
  struct nf_nat_ipv4_range {
  	unsigned int			flags;
---- a/include/net/netfilter/nf_conntrack.h
-+++ b/include/net/netfilter/nf_conntrack.h
-@@ -103,6 +103,9 @@ struct nf_conn {
-
- #if IS_ENABLED(CONFIG_NF_NAT)
- 	struct hlist_node	nat_bysource;
-+
-+	/* To optionally ensure 3-tuple uniqueness on the translated source */
-+	struct hlist_node	nat_by_manip_src;
- #endif
- 	/* all members below initialized via memset */
- 	struct { } __nfct_init_offset;
 --- a/net/netfilter/nf_nat_core.c
 +++ b/net/netfilter/nf_nat_core.c
 @@ -33,6 +33,7 @@ static DEFINE_MUTEX(nf_nat_proto_mutex);
