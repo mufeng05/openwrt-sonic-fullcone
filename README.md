@@ -21,23 +21,22 @@
 
 ## 安装
 
-```bash
-cd /path/to/openwrt-source
+在 OpenWrt 源码目录下执行：
 
+```bash
 # 先更新 feeds（LuCI 补丁需要）
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
-# 克隆本仓库
-git clone https://github.com/user/openwrt-sonic-fullcone /tmp/openwrt-sonic-fullcone
-
-# 应用补丁
-bash /tmp/openwrt-sonic-fullcone/add_sonic_fullcone.sh
+# 一键应用所有补丁
+curl -sSL https://raw.githubusercontent.com/mufeng05/openwrt-sonic-fullcone/master/add_sonic_fullcone.sh | bash
 
 # 编译
 make menuconfig   # 无需额外勾选，补丁直接应用到源码树
 make -j$(nproc)
 ```
+
+脚本会自动 clone 仓库、检测内核版本、复制补丁到对应位置，完成后自动清理临时文件。
 
 ## 配置
 

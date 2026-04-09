@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
 # add_sonic_fullcone.sh — Apply SONiC fullcone NAT patches to OpenWrt source tree
 # Run from the root of your OpenWrt/LEDE source checkout.
+# Usage: curl -sSL https://raw.githubusercontent.com/mufeng05/openwrt-sonic-fullcone/master/add_sonic_fullcone.sh | bash
 
 set -e
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if ! [ -d "./package" ] || ! [ -d "./target" ]; then
     echo "Error: run this script from the root of an OpenWrt source tree."
     exit 1
 fi
+
+trap 'rm -rf "$TMPDIR"' EXIT
+TMPDIR=$(mktemp -d) || exit 1
+
+echo "Cloning openwrt-sonic-fullcone ..."
+git clone --depth=1 --single-branch https://github.com/mufeng05/openwrt-sonic-fullcone "$TMPDIR/sonic-fullcone" || exit 1
+SRC="$TMPDIR/sonic-fullcone"
 
 # --- Detect kernel version ---
 kernel_versions=""
@@ -34,8 +40,8 @@ for kv in $kernel_versions; do
     hack_dir="./target/linux/generic/hack-$kv"
     if [ -d "$hack_dir" ]; then
         echo "Applying kernel patches to hack-$kv ..."
-        cp -f "$SCRIPT_DIR/kernel/984-add-sonic-fullcone-support.patch" "$hack_dir/"
-        cp -f "$SCRIPT_DIR/kernel/985-add-sonic-fullcone-to-nft.patch"  "$hack_dir/"
+        cp -f "$SRC/kernel/984-add-sonic-fullcone-support.patch" "$hack_dir/"
+        cp -f "$SRC/kernel/985-add-sonic-fullcone-to-nft.patch"  "$hack_dir/"
     else
         echo "Warning: $hack_dir not found, skipping kernel $kv"
     fi
@@ -45,45 +51,44 @@ done
 ipt_dir="./package/network/utils/iptables/patches"
 mkdir -p "$ipt_dir"
 echo "Applying iptables patch ..."
-cp -f "$SCRIPT_DIR/patches/iptables/901-sonic-fullcone.patch" "$ipt_dir/"
+cp -f "$SRC/patches/iptables/901-sonic-fullcone.patch" "$ipt_dir/"
 
 # --- Apply libnftnl patch ---
 nftnl_dir="./package/libs/libnftnl/patches"
 mkdir -p "$nftnl_dir"
 echo "Applying libnftnl patch ..."
-cp -f "$SCRIPT_DIR/patches/libnftnl/001-libnftnl-add-fullcone-expression-support.patch" "$nftnl_dir/"
+cp -f "$SRC/patches/libnftnl/001-libnftnl-add-fullcone-expression-support.patch" "$nftnl_dir/"
 
 # --- Apply nftables patch ---
 nft_dir="./package/network/utils/nftables/patches"
 mkdir -p "$nft_dir"
 echo "Applying nftables patch ..."
-cp -f "$SCRIPT_DIR/patches/nftables/002-nftables-add-fullcone-expression-support.patch" "$nft_dir/"
+cp -f "$SRC/patches/nftables/002-nftables-add-fullcone-expression-support.patch" "$nft_dir/"
 
 # --- Apply firewall patches ---
-# Detect fw3 or fw4
 if [ -d "./package/network/config/firewall4" ]; then
     fw4_dir="./package/network/config/firewall4/patches"
     mkdir -p "$fw4_dir"
     echo "Applying firewall4 patch (per-zone + per-proto fullcone) ..."
-    cp -f "$SCRIPT_DIR/firewall/firewall4/001-sonic-fullcone.patch" "$fw4_dir/"
+    cp -f "$SRC/firewall/firewall4/001-sonic-fullcone.patch" "$fw4_dir/"
 fi
 
 if [ -d "./package/network/config/firewall" ]; then
     fw3_dir="./package/network/config/firewall/patches"
     mkdir -p "$fw3_dir"
     echo "Applying firewall3 patch (per-zone + per-proto fullcone) ..."
-    cp -f "$SCRIPT_DIR/firewall/firewall3/001-sonic-fullcone.patch" "$fw3_dir/"
+    cp -f "$SRC/firewall/firewall3/001-sonic-fullcone.patch" "$fw3_dir/"
 fi
 
 # --- Apply LuCI patch ---
-luci_fw_dir="./feeds/luci/applications/luci-app-firewall/patches"
 if [ -d "./feeds/luci/applications/luci-app-firewall" ]; then
+    luci_fw_dir="./feeds/luci/applications/luci-app-firewall/patches"
     mkdir -p "$luci_fw_dir"
     echo "Applying luci-app-firewall patch (web UI fullcone options) ..."
-    cp -f "$SCRIPT_DIR/patches/luci-app-firewall/001-add-fullcone-options.patch" "$luci_fw_dir/"
+    cp -f "$SRC/patches/luci-app-firewall/001-add-fullcone-options.patch" "$luci_fw_dir/"
 else
-    echo "Note: luci-app-firewall not found in feeds. Run ./scripts/feeds update -a first,"
-    echo "      then re-run this script, or apply the LuCI patch manually."
+    echo "Note: luci-app-firewall not found. Run './scripts/feeds update -a && ./scripts/feeds install -a' first,"
+    echo "      then re-run this script."
 fi
 
 # --- Enable NFT_FULLCONE in kernel config ---
