@@ -7,15 +7,16 @@ Add fullcone NAT configuration to the firewall web interface:
   - Global "Fullcone NAT" checkbox in General Settings (defaults section)
   - Per-zone "Fullcone NAT" checkbox in zone General tab (next to Masquerading)
   - Per-zone "Fullcone protocols" multi-value in zone Advanced tab
-    (allows selecting specific L4 protocols for fullcone)
+  - Per-zone "Fullcone source IPs" dynamic list in zone Advanced tab
 
 These options map to UCI:
   firewall.@defaults[0].fullcone=1
   firewall.@zone[N].fullcone=1
   firewall.@zone[N].fullcone_proto='udp' 'tcp'
+  firewall.@zone[N].fullcone_src='192.168.1.13' '192.168.1.14'
 ---
- .../resources/view/firewall/zones.js          | 42 +++++++++++++++++++
- 1 file changed, 42 insertions(+)
+ .../resources/view/firewall/zones.js          | 54 +++++++++++++++++++
+ 1 file changed, 54 insertions(+)
 
 --- a/htdocs/luci-static/resources/view/firewall/zones.js
 +++ b/htdocs/luci-static/resources/view/firewall/zones.js
@@ -38,8 +39,8 @@ These options map to UCI:
 
 +		o = s.taboption('general', form.Flag, 'fullcone', _('Fullcone NAT'),
 +			_('Enable SONiC-style fullcone NAT for this zone. When enabled alongside masquerading, ' +
-+			  'provides RFC 3489 full cone NAT behavior. Use "Fullcone protocols" in Advanced Settings ' +
-+			  'to restrict to specific protocols (e.g. UDP only).'));
++			  'provides RFC 3489 full cone NAT behavior. Use "Fullcone protocols" and "Fullcone source IPs" ' +
++			  'in Advanced Settings to restrict scope.'));
 +		o.editable = true;
 +		o.depends('masq', '1');
 +		o.modalonly = false;
@@ -47,7 +48,7 @@ These options map to UCI:
  		o = s.taboption('general', form.Flag, 'mtu_fix', _('MSS clamping'));
  		o.modalonly = true;
 
-@@ -239,6 +264,23 @@
+@@ -239,6 +264,35 @@
  		if (fw4)
  			o.modalonly = true;
 
@@ -67,6 +68,17 @@ These options map to UCI:
 +		o.placeholder = _('All protocols');
 +		o.display_size = 5;
 +		o.delimiter = ' ';
++
++		o = s.taboption('advanced', form.DynamicList, 'fullcone_src',
++			_('Fullcone source IPs'),
++			_('Restrict fullcone NAT to specific LAN source IP addresses or CIDR subnets. ' +
++			  'When empty, all source IPs use fullcone. ' +
++			  'Example: 192.168.1.13 or 192.168.1.0/24'));
++		o.depends('fullcone', '1');
++		o.modalonly = true;
++		o.optional = true;
++		o.datatype = 'or(ipaddr,cidr4)';
++		o.placeholder = _('All source IPs');
 +
  		o = s.taboption('advanced', form.ListValue, 'family', _('Restrict to address family'));
  		o.value('', _('IPv4 and IPv6'));
