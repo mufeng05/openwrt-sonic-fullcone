@@ -13,7 +13,7 @@ These options map to UCI:
   firewall.@defaults[0].fullcone=1
   firewall.@zone[N].fullcone=1
   firewall.@zone[N].fullcone_proto='udp' 'tcp'
-  firewall.@zone[N].fullcone_src='192.168.1.13' '192.168.1.14'
+  firewall.@zone[N].fullcone_src='192.168.1.100' '192.168.1.200'
 ---
  .../resources/view/firewall/zones.js          | 54 +++++++++++++++++++
  1 file changed, 54 insertions(+)
@@ -73,7 +73,7 @@ These options map to UCI:
 +			_('Fullcone source IPs'),
 +			_('Restrict fullcone NAT to specific LAN source IP addresses or CIDR subnets. ' +
 +			  'When empty, all source IPs use fullcone. ' +
-+			  'Example: 192.168.1.13 or 192.168.1.0/24'));
++			  'Example: 192.168.1.100 or 192.168.1.0/24'));
 +		o.depends('fullcone', '1');
 +		o.modalonly = true;
 +		o.optional = true;

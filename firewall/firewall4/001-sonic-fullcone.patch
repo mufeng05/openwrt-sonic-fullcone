@@ -8,7 +8,7 @@ Adds fullcone NAT support to firewall4 with four levels of control:
   1. Global default:  config defaults / option fullcone 1
   2. Per-zone:        config zone / option fullcone 1
   3. Per-protocol:    config zone / list fullcone_proto udp
-  4. Per-source-IP:   config zone / list fullcone_src 192.168.1.13
+  4. Per-source-IP:   config zone / list fullcone_src 192.168.1.100
 
 When fullcone_src is specified, only traffic from those source IPs uses
 the fullcone expression; remaining traffic falls through to standard
