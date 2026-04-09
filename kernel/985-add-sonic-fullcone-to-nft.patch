@@ -220,7 +220,7 @@ Subject: [PATCH] netfilter: nft_fullcone: add fullcone nftables expression
 +	depends on NFT_NAT
 +	depends on NF_NAT
 +	depends on NF_CONNTRACK
-+	default m
++	default y
 +	help
 +	  This option adds the "fullcone" expression for nftables,
 +	  providing RFC 3489 full cone NAT via SONiC-style 3-tuple mapping.

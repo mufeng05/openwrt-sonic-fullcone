@@ -91,8 +91,8 @@ for kv in $kernel_versions; do
     kconfig="./target/linux/generic/config-$kv"
     if [ -f "$kconfig" ]; then
         if ! grep -q "CONFIG_NFT_FULLCONE" "$kconfig"; then
-            echo "CONFIG_NFT_FULLCONE=m" >> "$kconfig"
-            echo "Added CONFIG_NFT_FULLCONE=m to config-$kv"
+            echo "CONFIG_NFT_FULLCONE=y" >> "$kconfig"
+            echo "Added CONFIG_NFT_FULLCONE=y to config-$kv"
         fi
     fi
 done
