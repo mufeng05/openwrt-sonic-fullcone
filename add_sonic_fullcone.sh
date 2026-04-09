@@ -75,6 +75,17 @@ if [ -d "./package/network/config/firewall" ]; then
     cp -f "$SCRIPT_DIR/firewall/firewall3/001-sonic-fullcone.patch" "$fw3_dir/"
 fi
 
+# --- Apply LuCI patch ---
+luci_fw_dir="./feeds/luci/applications/luci-app-firewall/patches"
+if [ -d "./feeds/luci/applications/luci-app-firewall" ]; then
+    mkdir -p "$luci_fw_dir"
+    echo "Applying luci-app-firewall patch (web UI fullcone options) ..."
+    cp -f "$SCRIPT_DIR/patches/luci-app-firewall/001-add-fullcone-options.patch" "$luci_fw_dir/"
+else
+    echo "Note: luci-app-firewall not found in feeds. Run ./scripts/feeds update -a first,"
+    echo "      then re-run this script, or apply the LuCI patch manually."
+fi
+
 # --- Enable NFT_FULLCONE in kernel config ---
 for kv in $kernel_versions; do
     kconfig="./target/linux/generic/config-$kv"

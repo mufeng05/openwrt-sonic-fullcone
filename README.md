@@ -24,6 +24,10 @@ The kernel patch adds a second hash table inside conntrack (`nat_by_manip_src`) 
 ```bash
 cd /path/to/openwrt-source
 
+# Update feeds first (needed for LuCI patch)
+./scripts/feeds update -a
+./scripts/feeds install -a
+
 # Clone this repo
 git clone https://github.com/user/openwrt-sonic-fullcone /tmp/openwrt-sonic-fullcone
 
@@ -140,21 +144,35 @@ uci commit firewall
 nft list ruleset | grep fullcone
 ```
 
+## Web Interface (LuCI)
+
+The LuCI patch adds fullcone options to the standard firewall configuration pages:
+
+**General Settings** (Network → Firewall → General Settings):
+- "Fullcone NAT" checkbox — global default for all zones
+
+**Zone Settings** (Network → Firewall → Zones → Edit):
+- **General tab**: "Fullcone NAT" checkbox (appears when Masquerading is enabled)
+- **Advanced tab**: "Fullcone protocols" multi-select (TCP, UDP, UDP-Lite, SCTP, DCCP)
+
+No separate LuCI app is needed — everything integrates into the existing firewall pages.
+
 ## Files
 
 ```
 kernel/
-  984-add-sonic-fullcone-support.patch   # nf_nat_core.c: 3-tuple hash, EIM/EIF
-  985-add-sonic-fullcone-to-nft.patch    # nft_fullcone.c: nftables expression + Kconfig
+  984-add-sonic-fullcone-support.patch      # nf_nat_core.c: 3-tuple hash, EIM/EIF
+  985-add-sonic-fullcone-to-nft.patch       # nft_fullcone.c: nftables expression + Kconfig
 
 patches/
-  iptables/901-sonic-fullcone.patch      # libipt_MASQUERADE --fullcone flag
-  libnftnl/001-libnftnl-*.patch          # fullcone expression serialization
-  nftables/002-nftables-*.patch          # nft CLI "fullcone" keyword
+  iptables/901-sonic-fullcone.patch         # libipt_MASQUERADE --fullcone flag
+  libnftnl/001-libnftnl-*.patch             # fullcone expression serialization
+  nftables/002-nftables-*.patch             # nft CLI "fullcone" keyword
+  luci-app-firewall/001-add-*.patch         # LuCI web interface integration
 
 firewall/
-  firewall3/001-sonic-fullcone.patch     # fw3: per-zone + per-proto
-  firewall4/001-sonic-fullcone.patch     # fw4: per-zone + per-proto
+  firewall3/001-sonic-fullcone.patch        # fw3: per-zone + per-proto
+  firewall4/001-sonic-fullcone.patch        # fw4: per-zone + per-proto
 ```
 
 ## Comparison with other fullcone implementations
