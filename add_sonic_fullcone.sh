@@ -99,7 +99,7 @@ else
     skipped=$((skipped + 1))
 fi
 
-# --- firewall3 (iptables/fw3): per-zone, per-proto fullcone ---
+# --- firewall3 (iptables/fw3): per-zone, per-proto, per-IP fullcone ---
 if [ -d "./package/network/config/firewall" ]; then
     fw3_dir="./package/network/config/firewall/patches"
     mkdir -p "$fw3_dir"
