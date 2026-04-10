@@ -190,6 +190,14 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  		this.state.defaults = defs;
  	},
 
+@@ -2034,3 +2055,7 @@ return {
+ 			masq6: [ "bool" ],
+
++			fullcone: [ "bool" ],
++			fullcone_proto: [ "protocol", null, PARSE_LIST ],
++			fullcone_src: [ "network", null, PARSE_LIST ],
++
+ 			extra: [ "string", null, UNSUPPORTED ],
 @@ -2149,6 +2179,15 @@ return {
  			}
  		}
@@ -198,10 +206,10 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 +		 * When off, all fullcone is disabled regardless of zone config.
 +		 * When on, each zone must explicitly set fullcone=1 to enable.
 +		 */
-+		zone.fullcone = !!(this.state.defaults.fullcone && data.fullcone == '1');
++		zone.fullcone = !!(this.state.defaults.fullcone && zone.fullcone);
 +		zone.fullcone6 = zone.fullcone;
-+		zone.fullcone_proto = (data.fullcone_proto && length(data.fullcone_proto)) ? data.fullcone_proto : null;
-+		zone.fullcone_src = (data.fullcone_src && length(data.fullcone_src)) ? data.fullcone_src : null;
++		zone.fullcone_proto = zone.fullcone_proto || null;
++		zone.fullcone_src = zone.fullcone_src || null;
 +
  		if (zone.mtu_fix && this.kernel < 0x040a0000) {
  			this.warn_section(data, "option mtu_fix requires kernel 4.10 or later, ignoring");
