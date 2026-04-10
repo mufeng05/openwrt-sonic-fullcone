@@ -168,23 +168,21 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  			"accept",
  			"reject",
  			"drop"
-@@ -1946,6 +1966,8 @@ return {
+@@ -1946,6 +1966,7 @@ return {
  		}
 
  		let defs = this.parse_options(data, {
 +			fullcone: [ "bool", "0" ],
-+			fullcone6: [ "bool", "0" ],
  			input: [ "policy", "drop" ],
  			output: [ "policy", "drop" ],
  			forward: [ "policy", "drop" ],
-@@ -1980,6 +2002,14 @@ return {
+@@ -1980,6 +2002,13 @@ return {
 
  		delete defs.syn_flood;
 
-+		if (defs.fullcone || defs.fullcone6) {
++		if (defs.fullcone) {
 +			if (!nft_try_fullcone()) {
 +				delete defs.fullcone;
-+				delete defs.fullcone6;
 +				warn("fullcone expression not available, disabling fullcone globally\n");
 +			}
 +		}
@@ -201,7 +199,7 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 +		 * When on, each zone must explicitly set fullcone=1 to enable.
 +		 */
 +		zone.fullcone = !!(this.state.defaults.fullcone && data.fullcone == '1');
-+		zone.fullcone6 = !!(this.state.defaults.fullcone6 && data.fullcone6 == '1');
++		zone.fullcone6 = zone.fullcone;
 +		zone.fullcone_proto = (data.fullcone_proto && length(data.fullcone_proto)) ? data.fullcone_proto : null;
 +		zone.fullcone_src = (data.fullcone_src && length(data.fullcone_src)) ? data.fullcone_src : null;
 +
