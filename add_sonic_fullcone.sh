@@ -125,7 +125,14 @@ if [ -d "./feeds/luci/applications/luci-app-firewall" ]; then
     luci_fw_dir="./feeds/luci/applications/luci-app-firewall/patches"
     mkdir -p "$luci_fw_dir"
     cp -f "$SRC/patches/luci-app-firewall/"*.patch "$luci_fw_dir/"
-    echo "[luci]     applied (UI + zh_Hans translation)"
+    echo "[luci]     patch applied"
+
+    # Append zh_Hans translations directly to po file (po/ is not in build_dir, patches won't work)
+    zh_po="./feeds/luci/applications/luci-app-firewall/po/zh_Hans/firewall.po"
+    if [ -f "$zh_po" ] && ! grep -q "Fullcone NAT" "$zh_po"; then
+        cat "$SRC/translations/zh_Hans.po" >> "$zh_po"
+        echo "[luci]     zh_Hans translation appended"
+    fi
     applied=$((applied + 1))
 else
     echo "[luci]     not found — run './scripts/feeds update -a && ./scripts/feeds install -a' first"

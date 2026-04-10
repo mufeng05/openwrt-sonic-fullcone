@@ -189,6 +189,9 @@ patches/
   nftables/002-nftables-*.patch             # nft CLI "fullcone" 关键字
   luci-app-firewall/001-add-*.patch         # LuCI Web 界面集成
 
+translations/
+  zh_Hans.po                                # 中文翻译（安装时追加到 po 文件）
+
 firewall/
   firewall3/001-sonic-fullcone.patch        # fw3：per-zone, per-proto, per-IP
   firewall4/001-sonic-fullcone.patch        # fw4：per-zone, per-proto, per-IP
