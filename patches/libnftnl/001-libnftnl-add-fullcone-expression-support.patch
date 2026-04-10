@@ -251,7 +251,7 @@ Signed-off-by: Syrone Wong <wong.syrone@gmail.com>
  extern struct expr_ops expr_ops_match;
  extern struct expr_ops expr_ops_meta;
  extern struct expr_ops expr_ops_ng;
-@@ -65,6 +66,7 @@ static struct expr_ops *expr_ops[] = {
+@@ -65,7 +66,8 @@ static struct expr_ops *expr_ops[] = {
  	&expr_ops_log,
  	&expr_ops_lookup,
  	&expr_ops_masq,

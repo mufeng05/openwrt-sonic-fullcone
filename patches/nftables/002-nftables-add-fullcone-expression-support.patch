@@ -199,7 +199,7 @@ Signed-off-by: Syrone Wong <wong.syrone@gmail.com>
  <SCANSTATE_STMT_NAT>{
 --- a/src/statement.c
 +++ b/src/statement.c
-@@ -674,6 +674,7 @@ const char *nat_etype2str(enum nft_nat_e
+@@ -674,7 +674,8 @@ const char *nat_etype2str(enum nft_nat_e
  		[NFT_NAT_SNAT]	= "snat",
  		[NFT_NAT_DNAT]	= "dnat",
  		[NFT_NAT_MASQ]	= "masquerade",
