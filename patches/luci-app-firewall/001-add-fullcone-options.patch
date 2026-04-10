@@ -4,7 +4,7 @@ Subject: [PATCH] luci-app-firewall: add SONiC fullcone NAT options
 
 Add fullcone NAT configuration to the firewall web interface:
 
-  - Global "Fullcone NAT" / "Fullcone NAT6" checkboxes in General Settings
+  - Global "Fullcone NAT" checkbox in General Settings (global gate)
   - Per-zone "Fullcone NAT" checkbox in zone General tab
   - Per-zone "Fullcone protocols" multi-value in zone Advanced tab
   - Per-zone "Fullcone source IPs" dynamic list in zone Advanced tab
