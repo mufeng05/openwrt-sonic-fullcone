@@ -4,7 +4,7 @@ Subject: [PATCH] luci-app-firewall: add SONiC fullcone NAT options
 
 Add fullcone NAT configuration to the firewall web interface:
 
-  - Global "Fullcone NAT" checkbox in General Settings (global gate)
+  - Global "Fullcone NAT" / "Fullcone NAT6" checkboxes in General Settings
   - Per-zone "Fullcone NAT" checkbox in zone General tab
   - Per-zone "Fullcone protocols" multi-value in zone Advanced tab
   - Per-zone "Fullcone source IPs" dynamic list in zone Advanced tab
@@ -14,18 +14,24 @@ settings are ignored. When on, each zone must explicitly enable fullcone.
 ---
 --- a/htdocs/luci-static/resources/view/firewall/zones.js
 +++ b/htdocs/luci-static/resources/view/firewall/zones.js
-@@ -57,4 +57,10 @@
+@@ -57,4 +57,16 @@
  		o = s.option(form.Flag, 'drop_invalid', _('Drop invalid packets'));
 
 +		o = s.option(form.Flag, 'fullcone', _('Fullcone NAT'),
-+			_('Global gate for SONiC-style fullcone NAT. When enabled, each zone can individually activate fullcone in its settings.'));
++			_('Global gate for SONiC-style fullcone NAT (IPv4). When enabled, each zone can individually activate fullcone in its settings.'));
++		o.default = '0';
++		o.rmempty = true;
++		o.optional = true;
++
++		o = s.option(form.Flag, 'fullcone6', _('Fullcone NAT6'),
++			_('Global gate for SONiC-style fullcone NAT (IPv6). Most IPv6 traffic does NOT need fullcone.'));
 +		o.default = '0';
 +		o.rmempty = true;
 +		o.optional = true;
 +
  		let p = [
  			s.option(form.ListValue, 'input', _('Input')),
-@@ -178,6 +184,12 @@
+@@ -178,6 +189,12 @@
  			return null;
  		};
 
@@ -38,7 +44,7 @@ settings are ignored. When on, each zone must explicitly enable fullcone.
  		o = s.taboption('general', form.Flag, 'mtu_fix', _('MSS clamping'));
  		o.modalonly = true;
 
-@@ -279,4 +292,33 @@
+@@ -279,4 +296,33 @@
  		o.modalonly = true;
 
 +
@@ -67,7 +73,7 @@ settings are ignored. When on, each zone must explicitly enable fullcone.
 +		o.depends('fullcone', '1');
 +		o.modalonly = true;
 +		o.optional = true;
-+		o.datatype = 'or(ipaddr,cidr4)';
++		o.datatype = 'or(ipaddr,cidr)';
 +		o.placeholder = _('All source IPs');
 +
  		o = s.taboption('conntrack', form.Flag, 'masq_allow_invalid', _('Allow "invalid" traffic'),

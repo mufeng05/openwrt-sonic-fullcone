@@ -67,25 +67,40 @@ for kv in $kernel_versions; do
 done
 
 # --- iptables: --fullcone flag for MASQUERADE ---
-ipt_dir="./package/network/utils/iptables/patches"
-mkdir -p "$ipt_dir"
-cp -f "$SRC/patches/iptables/901-sonic-fullcone.patch" "$ipt_dir/"
-echo "[iptables] applied"
-applied=$((applied + 1))
+if [ -d "./package/network/utils/iptables" ]; then
+    ipt_dir="./package/network/utils/iptables/patches"
+    mkdir -p "$ipt_dir"
+    cp -f "$SRC/patches/iptables/901-sonic-fullcone.patch" "$ipt_dir/"
+    echo "[iptables] applied"
+    applied=$((applied + 1))
+else
+    echo "[iptables] not found, skipped"
+    skipped=$((skipped + 1))
+fi
 
 # --- libnftnl: fullcone expression serialization ---
-nftnl_dir="./package/libs/libnftnl/patches"
-mkdir -p "$nftnl_dir"
-cp -f "$SRC/patches/libnftnl/001-libnftnl-add-fullcone-expression-support.patch" "$nftnl_dir/"
-echo "[libnftnl] applied"
-applied=$((applied + 1))
+if [ -d "./package/libs/libnftnl" ]; then
+    nftnl_dir="./package/libs/libnftnl/patches"
+    mkdir -p "$nftnl_dir"
+    cp -f "$SRC/patches/libnftnl/001-libnftnl-add-fullcone-expression-support.patch" "$nftnl_dir/"
+    echo "[libnftnl] applied"
+    applied=$((applied + 1))
+else
+    echo "[libnftnl] not found, skipped"
+    skipped=$((skipped + 1))
+fi
 
 # --- nftables: fullcone CLI keyword ---
-nft_dir="./package/network/utils/nftables/patches"
-mkdir -p "$nft_dir"
-cp -f "$SRC/patches/nftables/002-nftables-add-fullcone-expression-support.patch" "$nft_dir/"
-echo "[nftables] applied"
-applied=$((applied + 1))
+if [ -d "./package/network/utils/nftables" ]; then
+    nft_dir="./package/network/utils/nftables/patches"
+    mkdir -p "$nft_dir"
+    cp -f "$SRC/patches/nftables/002-nftables-add-fullcone-expression-support.patch" "$nft_dir/"
+    echo "[nftables] applied"
+    applied=$((applied + 1))
+else
+    echo "[nftables] not found, skipped"
+    skipped=$((skipped + 1))
+fi
 
 # --- firewall4 (nftables/fw4): per-zone, per-proto, per-IP fullcone ---
 if [ -d "./package/network/config/firewall4" ]; then

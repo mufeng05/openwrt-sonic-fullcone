@@ -6,6 +6,10 @@ Subject: [PATCH] firewall3: add SONiC fullcone NAT with per-zone,
 Adds zone-level fullcone option with fullcone_proto and fullcone_src
 lists to firewall3. defaults.fullcone is a global gate.
 
+For each POSTROUTING fullcone rule, a matching PREROUTING rule is also
+generated so the kernel's find_appropriate_dst() reverse lookup can
+provide EIF (endpoint-independent filtering) for inbound packets.
+
 Example config:
   config zone 'wan'
     option fullcone '1'
@@ -16,8 +20,8 @@ Requires the 901-sonic-fullcone iptables patch for --fullcone support.
 ---
  defaults.c |  2 ++
  options.h  |  3 ++
- zones.c    | 80 +++++++++++++++++++++++++++++++++++++++++++++++++++
- 3 files changed, 85 insertions(+)
+ zones.c    | 95 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 100 insertions(+)
 
 --- a/defaults.c
 +++ b/defaults.c
@@ -95,7 +99,7 @@ Requires the 901-sonic-fullcone iptables patch for --fullcone support.
  	switch (handle->table)
  	{
  	case FW3_TABLE_FILTER:
-@@ -712,9 +749,52 @@ print_zone_rule(struct fw3_ipt_handle *h
+@@ -712,9 +749,68 @@ print_zone_rule(struct fw3_ipt_handle *h
  				{
  					r = fw3_ipt_rule_new(handle);
  					fw3_ipt_rule_src_dest(r, msrc, mdest);
@@ -107,6 +111,7 @@ Requires the 901-sonic-fullcone iptables patch for --fullcone support.
 +						/* Emit fullcone rules with proto/src filtering */
 +						if (n_fc_protos > 0) {
 +							for (p = 0; p < n_fc_protos; p++) {
++								/* POSTROUTING: SNAT */
 +								r = fw3_ipt_rule_new(handle);
 +								fw3_ipt_rule_src_dest(r, msrc, mdest);
 +								fw3_ipt_rule_proto(r, fullcone_protos[p]);
@@ -115,6 +120,12 @@ Requires the 901-sonic-fullcone iptables patch for --fullcone support.
 +								fw3_ipt_rule_target(r, "MASQUERADE");
 +								fw3_ipt_rule_extra(r, "--fullcone");
 +								fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
++								/* PREROUTING: DNAT reverse mapping */
++								r = fw3_ipt_rule_new(handle);
++								fw3_ipt_rule_proto(r, fullcone_protos[p]);
++								fw3_ipt_rule_target(r, "MASQUERADE");
++								fw3_ipt_rule_extra(r, "--fullcone");
++								fw3_ipt_rule_append(r, "zone_%s_prerouting", zone->name);
 +							}
 +						} else {
 +							/* src-only, no proto filter */
@@ -126,6 +137,11 @@ Requires the 901-sonic-fullcone iptables patch for --fullcone support.
 +								fw3_ipt_rule_extra(r, "--fullcone");
 +								fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
 +							}
++							/* Single PREROUTING rule for reverse mapping */
++							r = fw3_ipt_rule_new(handle);
++							fw3_ipt_rule_target(r, "MASQUERADE");
++							fw3_ipt_rule_extra(r, "--fullcone");
++							fw3_ipt_rule_append(r, "zone_%s_prerouting", zone->name);
 +						}
 +						/* Fallback: everything else gets standard masquerade */
 +						r = fw3_ipt_rule_new(handle);
@@ -135,10 +151,14 @@ Requires the 901-sonic-fullcone iptables patch for --fullcone support.
 +					}
 +					else if (zone_fullcone)
 +					{
-+						/* All traffic fullcone */
++						/* All traffic fullcone: POSTROUTING + PREROUTING */
 +						fw3_ipt_rule_target(r, "MASQUERADE");
 +						fw3_ipt_rule_extra(r, "--fullcone");
 +						fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
++						r = fw3_ipt_rule_new(handle);
++						fw3_ipt_rule_target(r, "MASQUERADE");
++						fw3_ipt_rule_extra(r, "--fullcone");
++						fw3_ipt_rule_append(r, "zone_%s_prerouting", zone->name);
 +					}
 +					else
 +					{
