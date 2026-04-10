@@ -4,10 +4,13 @@ Subject: [PATCH] luci-app-firewall: add SONiC fullcone NAT options
 
 Add fullcone NAT configuration to the firewall web interface:
 
-  - Global "Fullcone NAT" checkbox in General Settings (defaults section)
-  - Per-zone "Fullcone NAT" checkbox in zone General tab (next to Masquerading)
+  - Global "Fullcone NAT" checkbox in General Settings (global gate)
+  - Per-zone "Fullcone NAT" checkbox in zone General tab
   - Per-zone "Fullcone protocols" multi-value in zone Advanced tab
   - Per-zone "Fullcone source IPs" dynamic list in zone Advanced tab
+
+defaults.fullcone is a global gate: when off, all zone-level fullcone
+settings are ignored. When on, each zone must explicitly enable fullcone.
 ---
 --- a/htdocs/luci-static/resources/view/firewall/zones.js
 +++ b/htdocs/luci-static/resources/view/firewall/zones.js
@@ -15,21 +18,20 @@ Add fullcone NAT configuration to the firewall web interface:
  		o = s.option(form.Flag, 'drop_invalid', _('Drop invalid packets'));
 
 +		o = s.option(form.Flag, 'fullcone', _('Fullcone NAT'),
-+			_('Enable SONiC-style fullcone NAT globally for all zones with masquerading. Can be overridden per-zone.'));
++			_('Global gate for SONiC-style fullcone NAT. When enabled, each zone can individually activate fullcone in its settings.'));
 +		o.default = '0';
 +		o.rmempty = true;
 +		o.optional = true;
 +
  		let p = [
  			s.option(form.ListValue, 'input', _('Input')),
-@@ -178,6 +184,14 @@
+@@ -178,6 +184,13 @@
  			return null;
  		};
 
 +		o = s.taboption('general', form.Flag, 'fullcone', _('Fullcone NAT'),
-+			_('Enable SONiC-style fullcone NAT for this zone. When enabled alongside masquerading, ' +
-+			  'provides RFC 3489 full cone NAT behavior. Use "Fullcone protocols" and "Fullcone source IPs" ' +
-+			  'in Advanced Settings to restrict scope.'));
++			_('Enable fullcone NAT for this zone. Requires the global Fullcone NAT gate to be enabled in General Settings. ' +
++			  'Use "Fullcone protocols" and "Fullcone source IPs" in Advanced Settings to restrict scope.'));
 +		o.editable = true;
 +		o.depends('masq', '1');
 +		o.modalonly = false;
@@ -37,7 +39,7 @@ Add fullcone NAT configuration to the firewall web interface:
  		o = s.taboption('general', form.Flag, 'mtu_fix', _('MSS clamping'));
  		o.modalonly = true;
 
-@@ -279,4 +293,33 @@
+@@ -279,4 +292,33 @@
  		o.modalonly = true;
 
 +

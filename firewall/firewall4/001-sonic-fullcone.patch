@@ -168,30 +168,27 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  		this.state.defaults = defs;
  	},
 
-@@ -2149,6 +2179,38 @@ return {
+@@ -2149,6 +2179,35 @@ return {
  			}
  		}
 
-+		/* SONiC fullcone: parse per-zone options.
-+		 * zone.fullcone overrides defaults.fullcone.
-+		 * zone.fullcone_proto is a list of L4 protocol names
-+		 * (e.g. ["udp"]) — when set, only those protocols get
-+		 * fullcone; the rest falls through to standard masquerade.
-+		 * zone.fullcone_src is a list of source IPs/CIDRs —
-+		 * when set, only traffic from those addresses gets fullcone.
++		/* SONiC fullcone: defaults.fullcone is a global gate.
++		 * When off, all fullcone is disabled regardless of zone config.
++		 * When on, each zone must explicitly set fullcone=1 to enable.
++		 * zone.fullcone_proto restricts to specific L4 protocols.
++		 * zone.fullcone_src restricts to specific source IPs/CIDRs.
 +		 */
-+		let zone_fullcone = this.parse_option(data, "fullcone", "bool");
-+		let zone_fullcone6 = this.parse_option(data, "fullcone6", "bool");
++		if (this.state.defaults.fullcone) {
++			zone.fullcone = this.parse_option(data, "fullcone", "bool") ?? false;
++		} else {
++			zone.fullcone = false;
++		}
 +
-+		if (zone_fullcone != null)
-+			zone.fullcone = zone_fullcone;
-+		else
-+			zone.fullcone = this.state.defaults.fullcone ?? false;
-+
-+		if (zone_fullcone6 != null)
-+			zone.fullcone6 = zone_fullcone6;
-+		else
-+			zone.fullcone6 = this.state.defaults.fullcone6 ?? false;
++		if (this.state.defaults.fullcone6) {
++			zone.fullcone6 = this.parse_option(data, "fullcone6", "bool") ?? false;
++		} else {
++			zone.fullcone6 = false;
++		}
 +
 +		let fc_proto = this.parse_option(data, "fullcone_proto", "list");
 +		zone.fullcone_proto = (fc_proto && length(fc_proto)) ? fc_proto : null;
