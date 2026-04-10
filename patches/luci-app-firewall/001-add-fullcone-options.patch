@@ -8,21 +8,11 @@ Add fullcone NAT configuration to the firewall web interface:
   - Per-zone "Fullcone NAT" checkbox in zone General tab (next to Masquerading)
   - Per-zone "Fullcone protocols" multi-value in zone Advanced tab
   - Per-zone "Fullcone source IPs" dynamic list in zone Advanced tab
-
-These options map to UCI:
-  firewall.@defaults[0].fullcone=1
-  firewall.@zone[N].fullcone=1
-  firewall.@zone[N].fullcone_proto='udp' 'tcp'
-  firewall.@zone[N].fullcone_src='192.168.1.100' '192.168.1.200'
 ---
- .../resources/view/firewall/zones.js          | 54 +++++++++++++++++++
- 1 file changed, 54 insertions(+)
-
 --- a/htdocs/luci-static/resources/view/firewall/zones.js
 +++ b/htdocs/luci-static/resources/view/firewall/zones.js
-@@ -70,6 +70,12 @@
+@@ -57,4 +57,10 @@
  		o = s.option(form.Flag, 'drop_invalid', _('Drop invalid packets'));
- 		o.default = fwDefaults.getDropInvalid();
 
 +		o = s.option(form.Flag, 'fullcone', _('Fullcone NAT'),
 +			_('Enable SONiC-style fullcone NAT globally for all zones with masquerading. Can be overridden per-zone.'));
@@ -30,10 +20,9 @@ These options map to UCI:
 +		o.rmempty = true;
 +		o.optional = true;
 +
- 		var p = [ 'input', 'output', 'forward' ];
-
- 		for (var i = 0; i < p.length; i++) {
-@@ -161,6 +167,14 @@
+ 		let p = [
+ 			s.option(form.ListValue, 'input', _('Input')),
+@@ -178,6 +184,14 @@
  			return null;
  		};
 
@@ -48,10 +37,11 @@ These options map to UCI:
  		o = s.taboption('general', form.Flag, 'mtu_fix', _('MSS clamping'));
  		o.modalonly = true;
 
-@@ -239,7 +264,35 @@
- 		if (fw4)
- 			o.modalonly = true;
+@@ -257,4 +271,32 @@
+ 		o.modalonly = true;
 
+ 		o = s.taboption('advanced', form.DynamicList, 'masq_src', _('Restrict Masquerading to given source subnets'));
++
 +		o = s.taboption('advanced', form.MultiValue, 'fullcone_proto',
 +			_('Fullcone protocols'),
 +			_('Restrict fullcone NAT to specific L4 protocols. ' +
@@ -79,7 +69,3 @@ These options map to UCI:
 +		o.optional = true;
 +		o.datatype = 'or(ipaddr,cidr4)';
 +		o.placeholder = _('All source IPs');
-+
- 		o = s.taboption('advanced', form.ListValue, 'family', _('Restrict to address family'));
- 		o.value('', _('IPv4 and IPv6'));
- 		o.value('ipv4', _('IPv4 only'));
