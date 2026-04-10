@@ -168,38 +168,18 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  		this.state.defaults = defs;
  	},
 
-@@ -2149,6 +2179,35 @@ return {
+@@ -2149,6 +2179,15 @@ return {
  			}
  		}
 
 +		/* SONiC fullcone: defaults.fullcone is a global gate.
 +		 * When off, all fullcone is disabled regardless of zone config.
 +		 * When on, each zone must explicitly set fullcone=1 to enable.
-+		 * zone.fullcone_proto restricts to specific L4 protocols.
-+		 * zone.fullcone_src restricts to specific source IPs/CIDRs.
 +		 */
-+		if (this.state.defaults.fullcone) {
-+			zone.fullcone = this.parse_option(data, "fullcone", "bool") ?? false;
-+		} else {
-+			zone.fullcone = false;
-+		}
-+
-+		if (this.state.defaults.fullcone6) {
-+			zone.fullcone6 = this.parse_option(data, "fullcone6", "bool") ?? false;
-+		} else {
-+			zone.fullcone6 = false;
-+		}
-+
-+		let fc_proto = this.parse_option(data, "fullcone_proto", "list");
-+		zone.fullcone_proto = (fc_proto && length(fc_proto)) ? fc_proto : null;
-+
-+		let fc_src = this.parse_option(data, "fullcone_src", "list");
-+		zone.fullcone_src = (fc_src && length(fc_src)) ? fc_src : null;
-+
-+		if (zone.fullcone)
-+			this.warn_section(data, "fullcone enabled" +
-+				(zone.fullcone_src ? ` for src ${join(', ', zone.fullcone_src)}` : "") +
-+				(zone.fullcone_proto ? ` proto ${join(', ', zone.fullcone_proto)}` : ""));
++		zone.fullcone = !!(this.state.defaults.fullcone && data.fullcone == '1');
++		zone.fullcone6 = !!(this.state.defaults.fullcone6 && data.fullcone6 == '1');
++		zone.fullcone_proto = (data.fullcone_proto && length(data.fullcone_proto)) ? data.fullcone_proto : null;
++		zone.fullcone_src = (data.fullcone_src && length(data.fullcone_src)) ? data.fullcone_src : null;
 +
  		if (zone.mtu_fix && this.kernel < 0x040a0000) {
  			this.warn_section(data, "option mtu_fix requires kernel 4.10 or later, ignoring");
