@@ -1,23 +1,30 @@
 #!/usr/bin/env bash
 # add_sonic_fullcone.sh — Apply SONiC fullcone NAT patches to OpenWrt source tree
-# Run from the root of your OpenWrt/LEDE source checkout.
-# Usage: curl -sSL https://raw.githubusercontent.com/mufeng05/openwrt-sonic-fullcone/master/add_sonic_fullcone.sh | bash
+#
+# Usage:
+#   cd /path/to/openwrt && curl -sSL https://raw.githubusercontent.com/mufeng05/openwrt-sonic-fullcone/master/add_sonic_fullcone.sh | bash
+#
+# Prerequisites:
+#   ./scripts/feeds update -a && ./scripts/feeds install -a
 
 set -e
 
+# --- Check environment ---
 if ! [ -d "./package" ] || ! [ -d "./target" ]; then
-    echo "Error: run this script from the root of an OpenWrt source tree."
+    echo "Error: please run this script from the root of an OpenWrt source tree."
     exit 1
 fi
 
+# --- Clone repo to temp dir ---
 trap 'rm -rf "$TMPDIR"' EXIT
 TMPDIR=$(mktemp -d) || exit 1
 
-echo "Cloning openwrt-sonic-fullcone ..."
-git clone --depth=1 --single-branch https://github.com/mufeng05/openwrt-sonic-fullcone "$TMPDIR/sonic-fullcone" || exit 1
+REPO="https://github.com/mufeng05/openwrt-sonic-fullcone"
+echo "Cloning $REPO ..."
+git clone --depth=1 --single-branch "$REPO" "$TMPDIR/sonic-fullcone" || exit 1
 SRC="$TMPDIR/sonic-fullcone"
 
-# --- Detect kernel version ---
+# --- Detect kernel versions ---
 kernel_versions=""
 for f in ./include/kernel-[0-9]*; do
     [ -f "$f" ] && kernel_versions="$kernel_versions $(basename "$f" | sed 's/kernel-//')"
@@ -35,85 +42,104 @@ if [ -z "$kernel_versions" ]; then
 fi
 echo "Detected kernel versions: $kernel_versions"
 
-# --- Apply kernel patches ---
+applied=0
+skipped=0
+
+# --- Kernel patches (984: nf_nat_core fullcone, 985: nft_fullcone expression) ---
 for kv in $kernel_versions; do
     hack_dir="./target/linux/generic/hack-$kv"
     if [ -d "$hack_dir" ]; then
-        echo "Applying kernel patches to hack-$kv ..."
         cp -f "$SRC/kernel/984-add-sonic-fullcone-support.patch" "$hack_dir/"
         cp -f "$SRC/kernel/985-add-sonic-fullcone-to-nft.patch"  "$hack_dir/"
+        echo "[kernel]   hack-$kv: applied"
+        applied=$((applied + 2))
     else
-        echo "Warning: $hack_dir not found, skipping kernel $kv"
+        echo "[kernel]   hack-$kv: directory not found, skipped"
+        skipped=$((skipped + 2))
+    fi
+
+    # Enable CONFIG_NFT_FULLCONE=y
+    kconfig="./target/linux/generic/config-$kv"
+    if [ -f "$kconfig" ] && ! grep -q "CONFIG_NFT_FULLCONE" "$kconfig"; then
+        echo "CONFIG_NFT_FULLCONE=y" >> "$kconfig"
+        echo "[kernel]   config-$kv: added CONFIG_NFT_FULLCONE=y"
     fi
 done
 
-# --- Apply iptables patch ---
+# --- iptables: --fullcone flag for MASQUERADE ---
 ipt_dir="./package/network/utils/iptables/patches"
 mkdir -p "$ipt_dir"
-echo "Applying iptables patch ..."
 cp -f "$SRC/patches/iptables/901-sonic-fullcone.patch" "$ipt_dir/"
+echo "[iptables] applied"
+applied=$((applied + 1))
 
-# --- Apply libnftnl patch ---
+# --- libnftnl: fullcone expression serialization ---
 nftnl_dir="./package/libs/libnftnl/patches"
 mkdir -p "$nftnl_dir"
-echo "Applying libnftnl patch ..."
 cp -f "$SRC/patches/libnftnl/001-libnftnl-add-fullcone-expression-support.patch" "$nftnl_dir/"
+echo "[libnftnl] applied"
+applied=$((applied + 1))
 
-# --- Apply nftables patch ---
+# --- nftables: fullcone CLI keyword ---
 nft_dir="./package/network/utils/nftables/patches"
 mkdir -p "$nft_dir"
-echo "Applying nftables patch ..."
 cp -f "$SRC/patches/nftables/002-nftables-add-fullcone-expression-support.patch" "$nft_dir/"
+echo "[nftables] applied"
+applied=$((applied + 1))
 
-# --- Apply firewall patches ---
+# --- firewall4 (nftables/fw4): per-zone, per-proto, per-IP fullcone ---
 if [ -d "./package/network/config/firewall4" ]; then
     fw4_dir="./package/network/config/firewall4/patches"
     mkdir -p "$fw4_dir"
-    echo "Applying firewall4 patch (per-zone + per-proto fullcone) ..."
     cp -f "$SRC/firewall/firewall4/001-sonic-fullcone.patch" "$fw4_dir/"
+    echo "[fw4]      applied"
+    applied=$((applied + 1))
+else
+    echo "[fw4]      not found, skipped"
+    skipped=$((skipped + 1))
 fi
 
+# --- firewall3 (iptables/fw3): per-zone, per-proto fullcone ---
 if [ -d "./package/network/config/firewall" ]; then
     fw3_dir="./package/network/config/firewall/patches"
     mkdir -p "$fw3_dir"
-    echo "Applying firewall3 patch (per-zone + per-proto fullcone) ..."
     cp -f "$SRC/firewall/firewall3/001-sonic-fullcone.patch" "$fw3_dir/"
+    echo "[fw3]      applied"
+    applied=$((applied + 1))
+else
+    echo "[fw3]      not found, skipped"
+    skipped=$((skipped + 1))
 fi
 
-# --- Apply LuCI patch ---
+# --- LuCI: web interface fullcone options ---
 if [ -d "./feeds/luci/applications/luci-app-firewall" ]; then
     luci_fw_dir="./feeds/luci/applications/luci-app-firewall/patches"
     mkdir -p "$luci_fw_dir"
-    echo "Applying luci-app-firewall patch (web UI fullcone options) ..."
     cp -f "$SRC/patches/luci-app-firewall/001-add-fullcone-options.patch" "$luci_fw_dir/"
+    echo "[luci]     applied"
+    applied=$((applied + 1))
 else
-    echo "Note: luci-app-firewall not found. Run './scripts/feeds update -a && ./scripts/feeds install -a' first,"
-    echo "      then re-run this script."
+    echo "[luci]     not found — run './scripts/feeds update -a && ./scripts/feeds install -a' first"
+    skipped=$((skipped + 1))
 fi
 
-# --- Enable NFT_FULLCONE in kernel config ---
-for kv in $kernel_versions; do
-    kconfig="./target/linux/generic/config-$kv"
-    if [ -f "$kconfig" ]; then
-        if ! grep -q "CONFIG_NFT_FULLCONE" "$kconfig"; then
-            echo "CONFIG_NFT_FULLCONE=y" >> "$kconfig"
-            echo "Added CONFIG_NFT_FULLCONE=y to config-$kv"
-        fi
-    fi
-done
-
 echo ""
-echo "Done. Now run 'make menuconfig' and build."
+echo "=== Done: $applied applied, $skipped skipped ==="
 echo ""
-echo "UCI configuration example:"
-echo "  # Global default (all zones)"
-echo "  uci set firewall.@defaults[0].fullcone='1'"
+echo "Next steps:"
+echo "  make menuconfig    # no extra options needed"
+echo "  make -j\$(nproc)"
 echo ""
-echo "  # Per-zone"
+echo "After flashing, configure via LuCI (Network > Firewall > Zones > Edit) or UCI:"
+echo ""
+echo "  # Enable fullcone for wan zone"
 echo "  uci set firewall.@zone[1].fullcone='1'"
 echo ""
-echo "  # Per-protocol (only UDP gets fullcone)"
+echo "  # Optional: restrict to UDP only"
 echo "  uci add_list firewall.@zone[1].fullcone_proto='udp'"
 echo ""
-echo "  uci commit firewall"
-echo "  /etc/init.d/firewall restart"
+echo "  # Optional: restrict to specific LAN IPs"
+echo "  uci add_list firewall.@zone[1].fullcone_src='192.168.1.100'"
+echo "  uci add_list firewall.@zone[1].fullcone_src='192.168.1.200'"
+echo ""
+echo "  uci commit firewall && /etc/init.d/firewall restart"
