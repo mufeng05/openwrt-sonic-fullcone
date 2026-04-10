@@ -1,6 +1,6 @@
 # openwrt-sonic-fullcone
 
-适用于 OpenWrt 的 SONiC 风格全锥形 NAT（Full Cone NAT），支持 per-zone 和 per-protocol 粒度控制。
+适用于 OpenWrt 的 SONiC 风格全锥形 NAT（Full Cone NAT），支持 per-zone、per-protocol、per-source-IP 粒度控制。
 
 ## 这是什么
 
@@ -38,33 +38,40 @@ make -j$(nproc)
 
 脚本会自动 clone 仓库、检测内核版本、复制补丁到对应位置，完成后自动清理临时文件。
 
-## 配置
+## 配置逻辑
 
-### 方式一：Web 界面（LuCI）
+`defaults.fullcone` 是**全局总开关**：
+
+- **关闭时**（默认）：所有 fullcone 功能禁用，zone 里的设置无效
+- **开启时**：功能可用，但每个 zone 还需要**单独勾选** fullcone 才会生效
+
+这和 OpenWrt 的 `flow_offloading` 是同样的模式。
+
+## 方式一：Web 界面（LuCI）
 
 LuCI 补丁将 fullcone 选项直接集成到 OpenWrt 原生防火墙配置页面中，无需安装额外的 LuCI 应用。
 
 **全局设置**（网络 → 防火墙 → 常规设置）：
-- "Fullcone NAT" 复选框 — 为所有启用了伪装（Masquerading）的 zone 开启全锥形 NAT
+- "Fullcone NAT" 复选框 — 全局总开关
 
-**Zone 设置**（网络 → 防火墙 → 区域 → 编辑）：
-- **常规标签**："Fullcone NAT" 复选框（仅在开启伪装时显示）
-- **高级标签**："Fullcone protocols" 多选框（TCP、UDP、UDP-Lite、SCTP、DCCP）
-- **高级标签**："Fullcone source IPs" 动态列表（输入需要 fullcone 的内网 IP 或 CIDR）
+**Zone 编辑**（网络 → 防火墙 → 区域 → 点击编辑）：
+- **常规标签**："Fullcone NAT" 复选框（仅在开启伪装时出现），在 zone 列表和编辑弹窗中均可见
+- **高级标签**："Fullcone protocols" 多选框（TCP、UDP、UDP-Lite、SCTP、DCCP）— 限定协议
+- **高级标签**："Fullcone source IPs" 动态列表 — 限定内网源 IP
 
-### 方式二：UCI 命令行
+## 方式二：UCI 命令行
 
 ```bash
-# 全局启用
+# 1. 打开全局总开关（必须）
 uci set firewall.@defaults[0].fullcone='1'
 
-# 仅对 wan zone 启用
+# 2. 对 wan zone 启用 fullcone
 uci set firewall.@zone[1].fullcone='1'
 
-# 仅对 UDP 启用 fullcone（推荐用于游戏/P2P）
+# 3. 可选：仅对 UDP 启用（推荐用于游戏/P2P）
 uci add_list firewall.@zone[1].fullcone_proto='udp'
 
-# 仅对特定 IP 启用 fullcone
+# 4. 可选：仅对特定内网 IP 启用
 uci add_list firewall.@zone[1].fullcone_src='192.168.1.100'
 uci add_list firewall.@zone[1].fullcone_src='192.168.1.200'
 
@@ -76,74 +83,43 @@ uci commit firewall
 nft list ruleset | grep fullcone
 ```
 
-### 方式三：UCI 配置文件
+## 方式三：UCI 配置文件示例
 
-#### Level 1：全局默认
-
-为所有启用伪装的 zone 开启 fullcone：
-
-```
-# /etc/config/firewall
-config defaults
-    option fullcone '1'
-```
-
-#### Level 2：Per-zone
-
-仅对 WAN zone 启用：
+### 基本用法：全 zone 全协议 fullcone
 
 ```
 config defaults
-    # 这里不设 fullcone
+    option fullcone '1'           # 全局总开关
 
 config zone
     option name 'wan'
     option masq '1'
-    option fullcone '1'        # 仅此 zone 启用 fullcone
+    option fullcone '1'           # 此 zone 启用 fullcone
 ```
 
-#### Level 3：Per-protocol
-
-仅对 UDP 启用（推荐用于游戏/P2P 场景）：
+### 仅 UDP 启用 fullcone
 
 ```
 config zone
     option name 'wan'
     option masq '1'
     option fullcone '1'
-    list fullcone_proto 'udp'  # 仅 UDP 走 fullcone
+    list fullcone_proto 'udp'     # 仅 UDP 走 fullcone，其余走标准 masquerade
 ```
 
 生成的 nftables 规则：
 
 ```nft
 chain srcnat_wan {
-    # UDP → fullcone
-    meta nfproto ipv4 meta l4proto udp fullcone comment "!fw4: wan IPv4 fullcone udp NAT srcnat"
-    # 其余流量 → 标准 masquerade
-    meta nfproto ipv4 masquerade comment "!fw4: wan IPv4 masquerade"
+    meta nfproto ipv4 meta l4proto udp fullcone  # UDP → fullcone
+    meta nfproto ipv4 masquerade                 # 其余 → 标准 masquerade
 }
-
 chain dstnat_wan {
-    # 仅 UDP 做反向 fullcone 映射
-    meta nfproto ipv4 meta l4proto udp fullcone comment "!fw4: wan IPv4 fullcone udp NAT dstnat"
+    meta nfproto ipv4 meta l4proto udp fullcone  # 仅 UDP 反向映射
 }
 ```
 
-多协议：
-
-```
-config zone
-    option name 'wan'
-    option masq '1'
-    option fullcone '1'
-    list fullcone_proto 'udp'
-    list fullcone_proto 'tcp'
-```
-
-#### Level 4：Per-source-IP
-
-仅对局域网内指定 IP 启用 fullcone，其余走普通对称 NAT：
+### 仅特定 IP 启用 fullcone
 
 ```
 config zone
@@ -158,18 +134,15 @@ config zone
 
 ```nft
 chain srcnat_wan {
-    # 仅指定 IP 走 fullcone
     meta nfproto ipv4 ip saddr { 192.168.1.100, 192.168.1.200 } fullcone
-    # 其余 IP 走普通 masquerade
     meta nfproto ipv4 masquerade
 }
 chain dstnat_wan {
-    # DNAT 无需过滤 IP，内核只会命中有 fullcone 映射的流
     meta nfproto ipv4 fullcone
 }
 ```
 
-可以和 `fullcone_proto` 组合：只对指定 IP 的 UDP 流量启用 fullcone：
+### 组合：特定 IP + 特定协议
 
 ```
 config zone
@@ -181,15 +154,11 @@ config zone
     list fullcone_src '192.168.1.200'
 ```
 
-也支持 CIDR 网段：
+也支持 CIDR 网段：`list fullcone_src '192.168.1.0/24'`
 
-```
-    list fullcone_src '192.168.1.0/24'
-```
+### 高级：手写 nftables 规则
 
-#### Level 5：高级 — 手写 nftables 规则
-
-如需按源网段、端口范围等任意条件匹配，可使用 fw4 includes 或 `/etc/nftables.d/`：
+如需更复杂的匹配条件，可使用 `/etc/nftables.d/`：
 
 ```nft
 # /etc/nftables.d/10-fullcone-custom.nft
@@ -221,8 +190,8 @@ patches/
   luci-app-firewall/001-add-*.patch         # LuCI Web 界面集成
 
 firewall/
-  firewall3/001-sonic-fullcone.patch        # fw3：per-zone + per-proto
-  firewall4/001-sonic-fullcone.patch        # fw4：per-zone + per-proto
+  firewall3/001-sonic-fullcone.patch        # fw3：per-zone, per-proto, per-IP
+  firewall4/001-sonic-fullcone.patch        # fw4：per-zone, per-proto, per-IP
 ```
 
 ## 与其他 fullcone 实现的对比

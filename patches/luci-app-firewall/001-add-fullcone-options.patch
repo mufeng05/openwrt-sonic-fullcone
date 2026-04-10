@@ -25,7 +25,7 @@ settings are ignored. When on, each zone must explicitly enable fullcone.
 +
  		let p = [
  			s.option(form.ListValue, 'input', _('Input')),
-@@ -178,6 +184,13 @@
+@@ -178,6 +184,12 @@
  			return null;
  		};
 
@@ -34,7 +34,6 @@ settings are ignored. When on, each zone must explicitly enable fullcone.
 +			  'Use "Fullcone protocols" and "Fullcone source IPs" in Advanced Settings to restrict scope.'));
 +		o.editable = true;
 +		o.depends('masq', '1');
-+		o.modalonly = false;
 +
  		o = s.taboption('general', form.Flag, 'mtu_fix', _('MSS clamping'));
  		o.modalonly = true;
