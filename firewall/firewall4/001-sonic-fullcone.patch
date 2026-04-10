@@ -28,7 +28,7 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 
 --- a/root/usr/share/firewall4/templates/ruleset.uc
 +++ b/root/usr/share/firewall4/templates/ruleset.uc
-@@ -327,6 +327,18 @@ table inet fw4 {
+@@ -327,6 +327,24 @@ table inet fw4 {
  {%   for (let redirect in fw4.redirects(`dstnat_${zone.name}`)): %}
  		{%+ include("redirect.uc", { fw4, zone, redirect }) %}
  {%   endfor %}
@@ -42,12 +42,18 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 +{%    endif %}
 +{%   endif %}
 +{%   if (zone.masq6 && zone.fullcone6): %}
++{%    if (zone.fullcone_proto && length(zone.fullcone_proto)): %}
++{%     for (let proto in zone.fullcone_proto): %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "dstnat", proto, fc_src: null }) %}
++{%     endfor %}
++{%    else %}
 +		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "dstnat", proto: null, fc_src: null }) %}
++{%    endif %}
 +{%   endif %}
  {%   fw4.includes('chain-append', `dstnat_${zone.name}`) %}
  	}
 
-@@ -337,20 +349,48 @@ table inet fw4 {
+@@ -337,20 +349,62 @@ table inet fw4 {
  {%   for (let redirect in fw4.redirects(`srcnat_${zone.name}`)): %}
  		{%+ include("redirect.uc", { fw4, zone, redirect }) %}
  {%   endfor %}
@@ -82,7 +88,21 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  {%   endif %}
 -{%   if (zone.masq6): %}
 +{%   if (zone.masq6 && zone.fullcone6): %}
++{%    if (zone.fullcone_src && length(zone.fullcone_src)): %}
++{%     if (zone.fullcone_proto && length(zone.fullcone_proto)): %}
++{%      for (let proto in zone.fullcone_proto): %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "srcnat", proto, fc_src: zone.fullcone_src }) %}
++{%      endfor %}
++{%     else %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "srcnat", proto: null, fc_src: zone.fullcone_src }) %}
++{%     endif %}
++{%    elif (zone.fullcone_proto && length(zone.fullcone_proto)): %}
++{%     for (let proto in zone.fullcone_proto): %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "srcnat", proto, fc_src: null }) %}
++{%     endfor %}
++{%    else %}
 +		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "srcnat", proto: null, fc_src: null }) %}
++{%    endif %}
 +{%    for (let saddrs in zone.masq6_src_subnets): %}
 +{%     for (let daddrs in zone.masq6_dest_subnets): %}
 +		{%+ include("zone-masq.uc", { fw4, zone, family: 6, saddrs, daddrs }) %}
@@ -159,8 +179,8 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 
 +		if (defs.fullcone || defs.fullcone6) {
 +			if (!nft_try_fullcone()) {
-+				defs.fullcone = false;
-+				defs.fullcone6 = false;
++				delete defs.fullcone;
++				delete defs.fullcone6;
 +				warn("fullcone expression not available, disabling fullcone globally\n");
 +			}
 +		}
