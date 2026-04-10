@@ -64,7 +64,7 @@ Requires the 901-sonic-fullcone iptables patch for --fullcone support.
 
  	if (!fw3_is_family(zone, handle->family))
  		return;
-@@ -634,6 +641,30 @@ print_zone_rule(struct fw3_ipt_handle *h
+@@ -634,6 +641,29 @@ print_zone_rule(struct fw3_ipt_handle *h
  	if (!fw3_is_family(zone, handle->family))
  		return;
 
@@ -94,7 +94,7 @@ Requires the 901-sonic-fullcone iptables patch for --fullcone support.
  	switch (handle->table)
  	{
  	case FW3_TABLE_FILTER:
-@@ -712,8 +743,32 @@ print_zone_rule(struct fw3_ipt_handle *h
+@@ -712,9 +743,36 @@ print_zone_rule(struct fw3_ipt_handle *h
  				{
  					r = fw3_ipt_rule_new(handle);
  					fw3_ipt_rule_src_dest(r, msrc, mdest);

@@ -33,7 +33,7 @@ These options map to UCI:
  		var p = [ 'input', 'output', 'forward' ];
 
  		for (var i = 0; i < p.length; i++) {
-@@ -161,6 +167,25 @@
+@@ -161,6 +167,14 @@
  			return null;
  		};
 
@@ -48,7 +48,7 @@ These options map to UCI:
  		o = s.taboption('general', form.Flag, 'mtu_fix', _('MSS clamping'));
  		o.modalonly = true;
 
-@@ -239,6 +264,35 @@
+@@ -239,7 +264,35 @@
  		if (fw4)
  			o.modalonly = true;
 

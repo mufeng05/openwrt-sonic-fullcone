@@ -47,7 +47,7 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  {%   fw4.includes('chain-append', `dstnat_${zone.name}`) %}
  	}
 
-@@ -337,20 +349,48 @@ table inet fw4 {
+@@ -337,21 +349,48 @@ table inet fw4 {
  {%   for (let redirect in fw4.redirects(`srcnat_${zone.name}`)): %}
  		{%+ include("redirect.uc", { fw4, zone, redirect }) %}
  {%   endfor %}
@@ -168,7 +168,7 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  		this.state.defaults = defs;
  	},
 
-@@ -2149,6 +2179,36 @@ return {
+@@ -2149,6 +2179,38 @@ return {
  			}
  		}
 
@@ -207,7 +207,7 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  		if (zone.mtu_fix && this.kernel < 0x040a0000) {
  			this.warn_section(data, "option mtu_fix requires kernel 4.10 or later, ignoring");
  			return;
-@@ -2205,10 +2265,23 @@ return {
+@@ -2205,11 +2265,22 @@ return {
  		zone.related_subnets = related_subnets;
  		zone.related_physdevs = related_physdevs;
 

@@ -8,7 +8,7 @@
  	O_RANDOM_FULLY,
  };
 
-@@ -23,13 +24,17 @@ static void MASQUERADE_help(void)
+@@ -23,13 +24,18 @@ static void MASQUERADE_help(void)
  " --random\n"
  "				Randomize source port.\n"
  " --random-fully\n"
@@ -48,7 +48,7 @@
  }
 
  static void
-@@ -145,6 +156,9 @@ MASQUERADE_save(const void *ip, const st
+@@ -145,7 +156,10 @@ MASQUERADE_save(const void *ip, const st
 
  	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
  		printf(" --random-fully");
