@@ -37,10 +37,9 @@ Add fullcone NAT configuration to the firewall web interface:
  		o = s.taboption('general', form.Flag, 'mtu_fix', _('MSS clamping'));
  		o.modalonly = true;
 
-@@ -257,4 +271,32 @@
+@@ -279,4 +293,33 @@
  		o.modalonly = true;
 
- 		o = s.taboption('advanced', form.DynamicList, 'masq_src', _('Restrict Masquerading to given source subnets'));
 +
 +		o = s.taboption('advanced', form.MultiValue, 'fullcone_proto',
 +			_('Fullcone protocols'),
@@ -69,3 +68,5 @@ Add fullcone NAT configuration to the firewall web interface:
 +		o.optional = true;
 +		o.datatype = 'or(ipaddr,cidr4)';
 +		o.placeholder = _('All source IPs');
++
+ 		o = s.taboption('conntrack', form.Flag, 'masq_allow_invalid', _('Allow "invalid" traffic'),
