@@ -32,7 +32,7 @@
 curl -sSL https://raw.githubusercontent.com/mufeng05/openwrt-sonic-fullcone/master/add_sonic_fullcone.sh | bash
 
 # 编译
-make menuconfig   # 无需额外勾选，补丁直接应用到源码树
+make menuconfig   # 无需额外勾选，fullcone 编译进 nft_masq 模块
 make -j$(nproc)
 ```
 
@@ -181,7 +181,7 @@ table inet fullcone-custom {
 ```
 kernel/
   984-add-sonic-fullcone-support.patch      # nf_nat_core.c：3-tuple 哈希表、EIM/EIF
-  985-add-sonic-fullcone-to-nft.patch       # nft_fullcone.c：nftables 表达式 + Kconfig
+  985-add-sonic-fullcone-to-nft.patch       # nft_masq.c：fullcone 表达式嵌入 masquerade 模块
 
 patches/
   iptables/901-sonic-fullcone.patch         # libipt_MASQUERADE --fullcone 标志

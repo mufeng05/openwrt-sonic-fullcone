@@ -58,12 +58,6 @@ for kv in $kernel_versions; do
         skipped=$((skipped + 2))
     fi
 
-    # Enable CONFIG_NFT_FULLCONE=y
-    kconfig="./target/linux/generic/config-$kv"
-    if [ -f "$kconfig" ] && ! grep -q "CONFIG_NFT_FULLCONE" "$kconfig"; then
-        echo "CONFIG_NFT_FULLCONE=y" >> "$kconfig"
-        echo "[kernel]   config-$kv: added CONFIG_NFT_FULLCONE=y"
-    fi
 done
 
 # --- iptables: --fullcone flag for MASQUERADE ---
