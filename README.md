@@ -194,6 +194,12 @@ firewall/
   firewall4/001-sonic-fullcone.patch        # fw4：per-zone, per-proto, per-IP
 ```
 
+## 已知限制
+
+- **fw3 (iptables) 不支持 IPv6 fullcone**：OpenWrt 的 firewall3 在 zones.c 中只对 IPv4 生成 masquerade 规则，IPv6 masquerade 走不同的代码路径。因此 fw3 下 fullcone 仅对 IPv4 生效。IPv6 fullcone 需要使用 firewall4 (nftables)，fw4 已完整支持 IPv4 和 IPv6 fullcone。OpenWrt 23.05+ 默认使用 fw4，如需 IPv6 fullcone 请确保使用 fw4。
+- **端口奇偶保持（RFC 4787 REQ-3b）未实现**：fullcone 端口分配不保证奇数端口映射到奇数、偶数映射到偶数。现代应用（游戏、WebRTC、VoIP）几乎不依赖此特性。
+- **Hairpinning（NAT 回流）不由本项目处理**：内网主机通过外网地址访问另一个内网主机的场景，需要另行配置 NAT reflection 规则。
+
 ## 与其他 fullcone 实现的对比
 
 | | SONiC（本项目） | xt_FULLCONENAT | nft-fullcone | bcm-fullconenat |
