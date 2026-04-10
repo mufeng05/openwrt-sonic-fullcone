@@ -230,9 +230,6 @@ Subject: [PATCH] netfilter: nft_fullcone: add fullcone nftables expression
  config NF_FLOW_TABLE
 --- a/net/netfilter/Makefile
 +++ b/net/netfilter/Makefile
-@@ -122,5 +122,6 @@ obj-$(CONFIG_NFT_FIB_NETDEV)	+= nft_fib
-
+@@ -115,2 +115,3 @@
  obj-$(CONFIG_NFT_NAT)		+= nft_nat.o
 +obj-$(CONFIG_NFT_FULLCONE)	+= nft_fullcone.o
-
- # nf_tables netdev filter chain
