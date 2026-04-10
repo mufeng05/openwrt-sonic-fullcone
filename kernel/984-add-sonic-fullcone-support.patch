@@ -69,7 +69,7 @@ Signed-off-by: Akhilesh Samineni <akhilesh.samineni@broadcom.com>
  static unsigned int nf_nat_htable_size __read_mostly;
  static siphash_aligned_key_t nf_nat_hash_rnd;
 
-@@ -180,6 +181,49 @@ hash_by_src(const struct net *net,
+@@ -180,5 +181,48 @@ hash_by_src(const struct net *net,
  	return reciprocal_scale(hash, nf_nat_htable_size);
  }
 
@@ -116,9 +116,8 @@ Signed-off-by: Akhilesh Samineni <akhilesh.samineni@broadcom.com>
 +	return 0;
 +}
 +
- /* Is this tuple already taken? (not by us) */
- static int
- nf_nat_used_tuple(const struct nf_conntrack_tuple *tuple,
+ /**
+  * nf_nat_used_tuple - check if proposed nat tuple clashes with existing entry
 @@ -298,6 +337,34 @@ find_appropriate_src(struct net *net,
  	return 0;
  }
@@ -256,9 +255,9 @@ Signed-off-by: Akhilesh Samineni <akhilesh.samineni@broadcom.com>
 -	    !(range->flags & NF_NAT_RANGE_PROTO_RANDOM_ALL)) {
 +	    !(nat_range.flags & NF_NAT_RANGE_PROTO_RANDOM_ALL)) {
  		/* try the original tuple first */
--		if (in_range(orig_tuple, range)) {
-+		if (in_range(orig_tuple, &nat_range)) {
- 			if (!nf_nat_used_tuple(orig_tuple, ct)) {
+-		if (nf_in_range(orig_tuple, range)) {
++		if (nf_in_range(orig_tuple, &nat_range)) {
+ 			if (!nf_nat_used_tuple_new(orig_tuple, ct)) {
  				*tuple = *orig_tuple;
 -				return;
 +				goto out;
