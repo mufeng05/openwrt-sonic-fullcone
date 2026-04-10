@@ -5,7 +5,7 @@ Subject: [PATCH] netfilter: nft_fullcone: add fullcone nftables expression
 
 --- /dev/null
 +++ b/net/netfilter/nft_fullcone.c
-@@ -0,0 +1,189 @@
+@@ -0,0 +1,202 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * nft_fullcone - nftables fullcone expression backed by SONiC fullcone NAT
@@ -210,7 +210,7 @@ Subject: [PATCH] netfilter: nft_fullcone: add fullcone nftables expression
 +MODULE_ALIAS_NFT_EXPR("fullcone");
 --- a/net/netfilter/Kconfig
 +++ b/net/netfilter/Kconfig
-@@ -734,6 +734,16 @@ config NFT_NAT
+@@ -734,6 +734,17 @@ config NFT_NAT
  	  This option adds the "snat", "dnat", "masquerade" and "redirect"
  	  expression, as used to perform NAT in the nf_tables framework.
 
@@ -230,7 +230,7 @@ Subject: [PATCH] netfilter: nft_fullcone: add fullcone nftables expression
  config NF_FLOW_TABLE
 --- a/net/netfilter/Makefile
 +++ b/net/netfilter/Makefile
-@@ -122,6 +122,7 @@ obj-$(CONFIG_NFT_FIB_NETDEV)	+= nft_fib
+@@ -122,5 +122,6 @@ obj-$(CONFIG_NFT_FIB_NETDEV)	+= nft_fib
 
  obj-$(CONFIG_NFT_NAT)		+= nft_nat.o
 +obj-$(CONFIG_NFT_FULLCONE)	+= nft_fullcone.o
