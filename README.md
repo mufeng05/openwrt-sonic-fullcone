@@ -199,8 +199,22 @@ firewall/
 
 ## 已知限制
 
-- **fw3 (iptables) 不支持 IPv6 fullcone**：OpenWrt 的 firewall3 在 zones.c 中只对 IPv4 生成 masquerade 规则，IPv6 masquerade 走不同的代码路径。因此 fw3 下 fullcone 仅对 IPv4 生效。IPv6 fullcone 需要使用 firewall4 (nftables)，fw4 已完整支持 IPv4 和 IPv6 fullcone。OpenWrt 23.05+ 默认使用 fw4，如需 IPv6 fullcone 请确保使用 fw4。
+### fw3 (iptables) 相关
+
+- **仅支持 EIM，不支持 EIF**：iptables 的 `MASQUERADE` target 只能用在 `POSTROUTING` 链（架构限制）。因此 fw3 下 fullcone 只能保证「同一内网主机映射到同一外网端口」(EIM)，但无法让外部未预先建联的主机通过映射端口反向连入 (EIF)。**如需完整的 EIM+EIF，请使用 fw4 (nftables)**，fw4 的 `nft_fullcone` 表达式可同时工作于 `prerouting` 和 `postrouting`。
+
+- **fw3 代码只对 IPv4 生成 masquerade 规则**：firewall3 的 `zones.c` 里 `print_zone_rule` 在 `FW3_TABLE_NAT` 分支中有 `if (zone->masq && handle->family == FW3_FAMILY_V4)` 判断，IPv6 走不同路径。因此本项目的 fw3 patch 只生成 IPv4 fullcone 规则。
+
+  **手动添加 IPv6 fullcone**：内核侧的 984 补丁修改的是 `nf_nat_core.c`（IPv4/IPv6 通用），901 iptables 补丁加入 `libxt_NAT.c` 的 `--fullcone` 选项也是两个协议族共享的（`ip6tables` 和 `iptables` 用同一个 `libxt_NAT.so`）。因此可以在 `/etc/firewall.user` 里手动加：
+
+  ```bash
+  ip6tables -t nat -A POSTROUTING -o wan -j MASQUERADE --fullcone
+  ```
+
+### 通用限制
+
 - **端口奇偶保持（RFC 4787 REQ-3b）未实现**：fullcone 端口分配不保证奇数端口映射到奇数、偶数映射到偶数。现代应用（游戏、WebRTC、VoIP）几乎不依赖此特性。
+
 - **Hairpinning（NAT 回流）不由本项目处理**：内网主机通过外网地址访问另一个内网主机的场景，需要另行配置 NAT reflection 规则。
 
 ## 与其他 fullcone 实现的对比

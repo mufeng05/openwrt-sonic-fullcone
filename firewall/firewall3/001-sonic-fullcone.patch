@@ -85,7 +85,7 @@ Requires the 901-sonic-fullcone iptables patch for --fullcone support.
 
  	if (!fw3_is_family(zone, handle->family))
  		return;
-@@ -755,9 +766,82 @@ print_zone_rule(struct fw3_ipt_handle *h
+@@ -755,9 +766,70 @@ print_zone_rule(struct fw3_ipt_handle *h
  				{
  					r = fw3_ipt_rule_new(handle);
  					fw3_ipt_rule_src_dest(r, msrc, mdest);
@@ -128,22 +128,12 @@ Requires the 901-sonic-fullcone iptables patch for --fullcone support.
 +								fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
 +							}
 +						}
-+						/* PREROUTING reverse mapping (no src filter, kernel handles it) */
-+						if (!list_empty(&zone->fullcone_proto)) {
-+							list_for_each_entry(proto, &zone->fullcone_proto, list) {
-+								r = fw3_ipt_rule_new(handle);
-+								fw3_ipt_rule_proto(r, proto);
-+								fw3_ipt_rule_target(r, "MASQUERADE");
-+								fw3_ipt_rule_extra(r, "--fullcone");
-+								fw3_ipt_rule_append(r, "zone_%s_prerouting", zone->name);
-+							}
-+						} else {
-+							r = fw3_ipt_rule_new(handle);
-+							fw3_ipt_rule_target(r, "MASQUERADE");
-+							fw3_ipt_rule_extra(r, "--fullcone");
-+							fw3_ipt_rule_append(r, "zone_%s_prerouting", zone->name);
-+						}
-+						/* Fallback masquerade for non-fullcone traffic */
++						/* Fallback masquerade for non-fullcone traffic.
++						 * Note: iptables MASQUERADE target only works in
++						 * POSTROUTING, so fw3 fullcone provides EIM only
++						 * (no EIF for unsolicited inbound). Use fw4 for
++						 * full EIM+EIF support.
++						 */
 +						r = fw3_ipt_rule_new(handle);
 +						fw3_ipt_rule_src_dest(r, msrc, mdest);
 +						fw3_ipt_rule_target(r, "MASQUERADE");
@@ -151,14 +141,12 @@ Requires the 901-sonic-fullcone iptables patch for --fullcone support.
 +					}
 +					else if (zone_fullcone)
 +					{
-+						/* All traffic fullcone: POSTROUTING + PREROUTING */
++						/* All traffic fullcone: POSTROUTING only
++						 * (MASQUERADE cannot be used in PREROUTING)
++						 */
 +						fw3_ipt_rule_target(r, "MASQUERADE");
 +						fw3_ipt_rule_extra(r, "--fullcone");
 +						fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
-+						r = fw3_ipt_rule_new(handle);
-+						fw3_ipt_rule_target(r, "MASQUERADE");
-+						fw3_ipt_rule_extra(r, "--fullcone");
-+						fw3_ipt_rule_append(r, "zone_%s_prerouting", zone->name);
 +					}
 +					else
 +					{
