@@ -181,10 +181,11 @@ table inet fullcone-custom {
 ```
 kernel/
   984-add-sonic-fullcone-support.patch      # nf_nat_core.c：3-tuple 哈希表、EIM/EIF
-  985-add-sonic-fullcone-to-nft.patch       # nft_masq.c：fullcone 表达式嵌入 masquerade 模块
+  985-add-sonic-fullcone-to-ipt.patch       # xt_MASQUERADE.c：iptables FULLCONE target (PRE+POST)
+  986-add-sonic-fullcone-to-nft.patch       # nft_masq.c：nftables fullcone 表达式 (PRE+POST)
 
 patches/
-  iptables/901-sonic-fullcone.patch         # libipt_MASQUERADE --fullcone 标志
+  iptables/901-sonic-fullcone.patch         # libxt_NAT.c：注册 FULLCONE 用户态 target
   libnftnl/001-libnftnl-*.patch             # fullcone 表达式序列化
   nftables/002-nftables-*.patch             # nft CLI "fullcone" 关键字
   luci-app-firewall/001-add-*.patch         # LuCI Web 界面集成
@@ -193,22 +194,21 @@ translations/
   zh_Hans.po                                # 中文翻译（安装时追加到 po 文件）
 
 firewall/
-  firewall3/001-sonic-fullcone.patch        # fw3：per-zone, per-proto, per-IP
-  firewall4/001-sonic-fullcone.patch        # fw4：per-zone, per-proto, per-IP
+  firewall3/001-sonic-fullcone.patch        # fw3：per-zone, per-proto, per-IP, EIM+EIF
+  firewall4/001-sonic-fullcone.patch        # fw4：per-zone, per-proto, per-IP, EIM+EIF
 ```
 
 ## 已知限制
 
 ### fw3 (iptables) 相关
 
-- **仅支持 EIM，不支持 EIF**：iptables 的 `MASQUERADE` target 只能用在 `POSTROUTING` 链（架构限制）。因此 fw3 下 fullcone 只能保证「同一内网主机映射到同一外网端口」(EIM)，但无法让外部未预先建联的主机通过映射端口反向连入 (EIF)。**如需完整的 EIM+EIF，请使用 fw4 (nftables)**，fw4 的 `nft_fullcone` 表达式可同时工作于 `prerouting` 和 `postrouting`。
+- **fw3 代码只对 IPv4 生成 NAT 规则**：firewall3 的 `zones.c` 里 `print_zone_rule` 在 `FW3_TABLE_NAT` 分支中有 `if (zone->masq && handle->family == FW3_FAMILY_V4)` 判断，IPv6 走不同路径。因此本项目的 fw3 patch 只生成 IPv4 fullcone 规则。
 
-- **fw3 代码只对 IPv4 生成 masquerade 规则**：firewall3 的 `zones.c` 里 `print_zone_rule` 在 `FW3_TABLE_NAT` 分支中有 `if (zone->masq && handle->family == FW3_FAMILY_V4)` 判断，IPv6 走不同路径。因此本项目的 fw3 patch 只生成 IPv4 fullcone 规则。
-
-  **手动添加 IPv6 fullcone**：内核侧的 984 补丁修改的是 `nf_nat_core.c`（IPv4/IPv6 通用），901 iptables 补丁加入 `libxt_NAT.c` 的 `--fullcone` 选项也是两个协议族共享的（`ip6tables` 和 `iptables` 用同一个 `libxt_NAT.so`）。因此可以在 `/etc/firewall.user` 里手动加：
+  **手动添加 IPv6 fullcone**：内核侧的 984/985 补丁和 901 用户态补丁都是 IPv4/IPv6 通用的，`FULLCONE` target 对两个协议族都注册了。可以在 `/etc/firewall.user` 里手动加：
 
   ```bash
-  ip6tables -t nat -A POSTROUTING -o wan -j MASQUERADE --fullcone
+  ip6tables -t nat -A POSTROUTING -o wan -j FULLCONE
+  ip6tables -t nat -A PREROUTING  -i wan -j FULLCONE
   ```
 
 ### 通用限制

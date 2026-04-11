@@ -45,22 +45,25 @@ echo "Detected kernel versions: $kernel_versions"
 applied=0
 skipped=0
 
-# --- Kernel patches (984: nf_nat_core fullcone, 985: nft_fullcone expression) ---
+# --- Kernel patches ---
+#   984: nf_nat_core fullcone (SONiC core, 3-tuple hash)
+#   985: xt_MASQUERADE FULLCONE target (iptables, PRE+POST hooks)
+#   986: nft_masq fullcone expression (nftables, PRE+POST hooks)
 for kv in $kernel_versions; do
     hack_dir="./target/linux/generic/hack-$kv"
     if [ -d "$hack_dir" ]; then
-        cp -f "$SRC/kernel/984-add-sonic-fullcone-support.patch" "$hack_dir/"
-        cp -f "$SRC/kernel/985-add-sonic-fullcone-to-nft.patch"  "$hack_dir/"
-        echo "[kernel]   hack-$kv: applied"
-        applied=$((applied + 2))
+        cp -f "$SRC/kernel/984-add-sonic-fullcone-support.patch"  "$hack_dir/"
+        cp -f "$SRC/kernel/985-add-sonic-fullcone-to-ipt.patch"   "$hack_dir/"
+        cp -f "$SRC/kernel/986-add-sonic-fullcone-to-nft.patch"   "$hack_dir/"
+        echo "[kernel]   hack-$kv: applied (984+985+986)"
+        applied=$((applied + 3))
     else
         echo "[kernel]   hack-$kv: directory not found, skipped"
-        skipped=$((skipped + 2))
+        skipped=$((skipped + 3))
     fi
-
 done
 
-# --- iptables: --fullcone flag for MASQUERADE ---
+# --- iptables: FULLCONE target userspace support ---
 if [ -d "./package/network/utils/iptables" ]; then
     ipt_dir="./package/network/utils/iptables/patches"
     mkdir -p "$ipt_dir"

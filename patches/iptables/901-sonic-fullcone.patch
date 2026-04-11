@@ -1,79 +1,84 @@
 From: openwrt-sonic-fullcone contributors
 Date: Wed, 9 Apr 2026 00:00:00 +0000
-Subject: [PATCH] libxt_NAT: add --fullcone option to MASQUERADE target
+Subject: [PATCH] libxt_NAT: register FULLCONE target for SONiC fullcone NAT
 
-Adds a --fullcone flag to the MASQUERADE target that sets
-NF_NAT_RANGE_FULLCONE in the range flags. The kernel patch 984
-interprets this flag to enable SONiC-style 3-tuple fullcone NAT.
+Registers a new iptables target "FULLCONE" in libxt_NAT.c. The
+target reuses the same options as MASQUERADE (--to-ports, --random,
+--random-fully) and the same targetsize (nf_nat_ipv4_multi_range_compat
+for IPv4, nf_nat_range for IPv6).
 
-Since iptables 1.8.x merged SNAT/DNAT/MASQUERADE/REDIRECT into a
-single libxt_NAT.c file, --fullcone is added to MASQUERADE_opts[]
-only — other targets ignore it.
+The kernel side (985 patch) implements the FULLCONE target with
+bidirectional hook support (PREROUTING + POSTROUTING), enabling both
+EIM and EIF for fw3/iptables.
+
+Usage:
+  iptables -t nat -A POSTROUTING -o wan -j FULLCONE
+  iptables -t nat -A PREROUTING  -i wan -j FULLCONE
 ---
 --- a/extensions/libxt_NAT.c
 +++ b/extensions/libxt_NAT.c
-@@ -18,6 +18,10 @@
- #include <linux/netfilter_ipv6/ip6_tables.h>
- #include <linux/netfilter/nf_nat.h>
+@@ -60,6 +60,18 @@ static void MASQUERADE_help(void)
+ "				Fully randomize source port.\n");
+ }
 
-+#ifndef NF_NAT_RANGE_FULLCONE
-+#define NF_NAT_RANGE_FULLCONE		(1 << 10)
-+#endif
++static void FULLCONE_help(void)
++{
++	printf(
++"FULLCONE target options:\n"
++" --to-ports <port>[-<port>]\n"
++"				Port (range) to map to.\n"
++" --random\n"
++"				Randomize source port.\n"
++" --random-fully\n"
++"				Fully randomize source port.\n");
++}
 +
- #define TO_IPV4_MRC(ptr) ((const struct nf_nat_ipv4_multi_range_compat *)(ptr))
- #define RANGE2_INIT_FROM_IPV4_MRC(ptr) {			\
- 	.flags		= TO_IPV4_MRC(ptr)->range[0].flags,	\
-@@ -40,6 +44,7 @@ enum {
- 	O_RANDOM,
- 	O_RANDOM_FULLY,
- 	O_PERSISTENT,
-+	O_FULLCONE,
- };
-
- static void SNAT_help(void)
-@@ -59,7 +64,9 @@ static void MASQUERADE_help(void)
- " --random\n"
- "				Randomize source port.\n"
- " --random-fully\n"
--"				Fully randomize source port.\n");
-+"				Fully randomize source port.\n"
-+" --fullcone\n"
-+"				SONiC-style fullcone NAT (3-tuple uniqueness).\n");
- }
-
  static void DNAT_help(void)
-@@ -105,6 +112,7 @@ static const struct xt_option_entry MASQ
- 	{.name = "to-ports", .id = O_TO_PORTS, .type = XTTYPE_STRING},
- 	{.name = "random", .id = O_RANDOM, .type = XTTYPE_NONE},
- 	{.name = "random-fully", .id = O_RANDOM_FULLY, .type = XTTYPE_NONE},
-+	{.name = "fullcone", .id = O_FULLCONE, .type = XTTYPE_NONE},
- 	XTOPT_TABLEEND,
- };
+ {
+ 	printf(
+@@ -495,6 +507,9 @@ PSX_GEN(SNAT6, RANGE2_INIT_FROM_RANGE, \
+ PSX_GEN(MASQUERADE, RANGE2_INIT_FROM_IPV4_MRC, \
+ 	AF_INET, "masq ports: ", "--to-ports ", true, "masquerade")
 
-@@ -253,6 +261,9 @@ static void __NAT_parse(struct xt_option
- 	case O_RANDOM_FULLY:
- 		range->flags |= NF_NAT_RANGE_PROTO_RANDOM_FULLY;
- 		break;
-+	case O_FULLCONE:
-+		range->flags |= NF_NAT_RANGE_FULLCONE;
-+		break;
- 	}
- }
++PSX_GEN(FULLCONE, RANGE2_INIT_FROM_IPV4_MRC, \
++	AF_INET, "fullcone ports: ", "--to-ports ", true, "fullcone")
++
+ PSX_GEN(MASQUERADE6, RANGE2_INIT_FROM_RANGE, \
+ 	AF_INET6, "masq ports: ", "--to-ports ", true, "masquerade")
 
-@@ -277,6 +288,7 @@ static void NAT_parse(struct xt_option_c
- 	case O_PERSISTENT:
- 	case O_RANDOM:
- 	case O_RANDOM_FULLY:
-+	case O_FULLCONE:
- 		mr->range->flags |= range.flags;
- 		break;
- 	}
-@@ -368,7 +380,9 @@ static void __NAT_print(const struct nf_
- 		printf(" %srandom-fully", flag_pfx);
- 	if (r->flags & NF_NAT_RANGE_PERSISTENT)
- 		printf(" %spersistent", flag_pfx);
-+	if (r->flags & NF_NAT_RANGE_FULLCONE)
-+		printf(" %sfullcone", flag_pfx);
- }
-
- static int
+@@ -564,7 +579,36 @@ static struct xtables_target nat_tg_reg[
+ 		.xlate		= MASQUERADE6_xlate,
+ 	},
+ 	{
++		.name		= "FULLCONE",
++		.version	= XTABLES_VERSION,
++		.family		= NFPROTO_IPV4,
++		.size		= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++		.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++		.help		= FULLCONE_help,
++		.x6_parse	= NAT_parse,
++		.x6_fcheck	= SNAT_fcheck,
++		.print		= FULLCONE_print,
++		.save		= FULLCONE_save,
++		.x6_options	= MASQUERADE_opts,
++		.xlate		= FULLCONE_xlate,
++	},
++#if defined(CONFIG_IPV6)
++	{
++		.name		= "FULLCONE",
++		.version	= XTABLES_VERSION,
++		.family		= NFPROTO_IPV6,
++		.size		= XT_ALIGN(sizeof(struct nf_nat_range)),
++		.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_range)),
++		.help		= FULLCONE_help,
++		.x6_parse	= NAT_parse6,
++		.print		= MASQUERADE6_print,
++		.save		= MASQUERADE6_save,
++		.x6_options	= MASQUERADE_opts,
++		.xlate		= MASQUERADE6_xlate,
++	},
++#endif
++	{
+ 		.name		= "REDIRECT",
+ 		.version	= XTABLES_VERSION,
+ 		.family		= NFPROTO_IPV4,

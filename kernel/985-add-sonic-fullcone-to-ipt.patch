@@ -1,0 +1,154 @@
+From: openwrt-sonic-fullcone contributors
+Date: Wed, 9 Apr 2026 00:00:00 +0000
+Subject: [PATCH] netfilter: xt_MASQUERADE: add FULLCONE target for iptables
+
+Register a new iptables target "FULLCONE" alongside the existing
+"MASQUERADE" target inside the same xt_MASQUERADE.ko module. Unlike
+MASQUERADE which only allows POSTROUTING, FULLCONE allows both
+PREROUTING and POSTROUTING hooks:
+
+  - POSTROUTING: masquerade + NF_NAT_RANGE_FULLCONE flag
+                 (sets up 3-tuple unique mapping via 984 patch)
+  - PREROUTING:  reverse lookup via find_appropriate_dst()
+                 (provides EIF — endpoint-independent filtering)
+
+This is the iptables equivalent of the fw4 nft_fullcone expression.
+No new kernel module is needed — FULLCONE registers inside the
+existing xt_MASQUERADE.ko which is already loaded when fw3 uses NAT.
+
+Usage:
+  iptables -t nat -A POSTROUTING -o wan -j FULLCONE
+  iptables -t nat -A PREROUTING  -i wan -j FULLCONE
+
+Requires 984-add-sonic-fullcone-support.patch for the kernel-side
+NF_NAT_RANGE_FULLCONE flag and 3-tuple hash table.
+---
+ net/netfilter/xt_MASQUERADE.c | 109 ++++++++++++++++++++++++++++++++-
+ 1 file changed, 108 insertions(+), 1 deletion(-)
+
+--- a/net/netfilter/xt_MASQUERADE.c
++++ b/net/netfilter/xt_MASQUERADE.c
+@@ -9,8 +9,10 @@
+ #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+ #include <linux/module.h>
+ #include <linux/netfilter/x_tables.h>
++#include <net/netfilter/nf_conntrack.h>
+ #include <net/netfilter/nf_nat.h>
+ #include <net/netfilter/nf_nat_masquerade.h>
++#include <uapi/linux/netfilter/nf_nat.h>
+
+ MODULE_LICENSE("GPL");
+ MODULE_AUTHOR("Netfilter Core Team <coreteam@netfilter.org>");
+@@ -72,6 +74,77 @@ static int masquerade_tg6_checkentry(con
+ }
+ #endif
+
++/* SONiC fullcone target: allows both PRE- and POST-routing hooks.
++ * POSTROUTING: regular masquerade with NF_NAT_RANGE_FULLCONE flag
++ *              (3-tuple unique mapping via 984 patch).
++ * PREROUTING:  reverse lookup via find_appropriate_dst() in
++ *              nf_nat_setup_info() with NF_NAT_MANIP_DST.
++ */
++static unsigned int
++fullcone_tg(struct sk_buff *skb, const struct xt_action_param *par)
++{
++	const struct nf_nat_ipv4_multi_range_compat *mr = par->targinfo;
++	struct nf_nat_range2 range;
++	struct nf_conn *ct;
++	enum ip_conntrack_info ctinfo;
++
++	memset(&range, 0, sizeof(range));
++	range.flags      = mr->range[0].flags | NF_NAT_RANGE_FULLCONE;
++	range.min_proto  = mr->range[0].min;
++	range.max_proto  = mr->range[0].max;
++
++	if (xt_hooknum(par) == NF_INET_POST_ROUTING)
++		return nf_nat_masquerade_ipv4(skb, xt_hooknum(par), &range,
++					      xt_out(par));
++
++	/* PREROUTING: reverse mapping for EIF */
++	ct = nf_ct_get(skb, &ctinfo);
++	if (!ct || (ctinfo != IP_CT_NEW && ctinfo != IP_CT_RELATED &&
++		    ctinfo != IP_CT_RELATED_REPLY))
++		return NF_ACCEPT;
++
++	return nf_nat_setup_info(ct, &range, NF_NAT_MANIP_DST);
++}
++
++static int fullcone_tg_check(const struct xt_tgchk_param *par)
++{
++	const struct nf_nat_ipv4_multi_range_compat *mr = par->targinfo;
++
++	if (mr->rangesize != 1) {
++		pr_debug("bad rangesize %u\n", mr->rangesize);
++		return -EINVAL;
++	}
++	return nf_ct_netns_get(par->net, par->family);
++}
++
++#if IS_ENABLED(CONFIG_IPV6)
++static unsigned int
++fullcone_tg6(struct sk_buff *skb, const struct xt_action_param *par)
++{
++	const struct nf_nat_range *orig = par->targinfo;
++	struct nf_nat_range2 range;
++	struct nf_conn *ct;
++	enum ip_conntrack_info ctinfo;
++
++	memset(&range, 0, sizeof(range));
++	range.flags      = orig->flags | NF_NAT_RANGE_FULLCONE;
++	range.min_addr   = orig->min_addr;
++	range.max_addr   = orig->max_addr;
++	range.min_proto  = orig->min_proto;
++	range.max_proto  = orig->max_proto;
++
++	if (xt_hooknum(par) == NF_INET_POST_ROUTING)
++		return nf_nat_masquerade_ipv6(skb, &range, xt_out(par));
++
++	ct = nf_ct_get(skb, &ctinfo);
++	if (!ct || (ctinfo != IP_CT_NEW && ctinfo != IP_CT_RELATED &&
++		    ctinfo != IP_CT_RELATED_REPLY))
++		return NF_ACCEPT;
++
++	return nf_nat_setup_info(ct, &range, NF_NAT_MANIP_DST);
++}
++#endif
++
+ static struct xt_target masquerade_tg_reg[] __read_mostly = {
+ 	{
+ #if IS_ENABLED(CONFIG_IPV6)
+@@ -95,8 +166,34 @@ static struct xt_target masquerade_tg_re
+ 		.checkentry	= masquerade_tg_check,
+ 		.destroy	= masquerade_tg_destroy,
+ 		.me		= THIS_MODULE,
+-	}
++	},
++	{
++		.name		= "FULLCONE",
++		.family		= NFPROTO_IPV4,
++		.target		= fullcone_tg,
++		.targetsize	= sizeof(struct nf_nat_ipv4_multi_range_compat),
++		.table		= "nat",
++		.hooks		= (1 << NF_INET_PRE_ROUTING) |
++				  (1 << NF_INET_POST_ROUTING),
++		.checkentry	= fullcone_tg_check,
++		.destroy	= masquerade_tg_destroy,
++		.me		= THIS_MODULE,
++	},
++#if IS_ENABLED(CONFIG_IPV6)
++	{
++		.name		= "FULLCONE",
++		.family		= NFPROTO_IPV6,
++		.target		= fullcone_tg6,
++		.targetsize	= sizeof(struct nf_nat_range),
++		.table		= "nat",
++		.hooks		= (1 << NF_INET_PRE_ROUTING) |
++				  (1 << NF_INET_POST_ROUTING),
++		.checkentry	= masquerade_tg6_checkentry,
++		.destroy	= masquerade_tg_destroy,
++		.me		= THIS_MODULE,
++	},
++#endif
+ };
+
+ static int __init masquerade_tg_init(void)
