@@ -63,12 +63,13 @@ Requires the 901-sonic-fullcone iptables patch for --fullcone support.
  	FW3_OPT("log",                 int,      zone,     log),
  	FW3_OPT("log_limit",           limit,    zone,     log_limit),
 
-@@ -214,6 +218,8 @@ fw3_alloc_zone(void)
+@@ -214,7 +218,9 @@ fw3_alloc_zone(void)
  	INIT_LIST_HEAD(&zone->masq_src);
  	INIT_LIST_HEAD(&zone->masq_dest);
  	INIT_LIST_HEAD(&zone->cthelpers);
 +	INIT_LIST_HEAD(&zone->fullcone_proto);
 +	INIT_LIST_HEAD(&zone->fullcone_src);
+
  	INIT_LIST_HEAD(&zone->old_addrs);
 
  	zone->enabled = true;
