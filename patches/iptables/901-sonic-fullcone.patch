@@ -1,26 +1,48 @@
---- a/extensions/libipt_MASQUERADE.c
-+++ b/extensions/libipt_MASQUERADE.c
-@@ -11,6 +11,7 @@
- enum {
- 	O_TO_PORTS = 0,
+From: openwrt-sonic-fullcone contributors
+Date: Wed, 9 Apr 2026 00:00:00 +0000
+Subject: [PATCH] libxt_NAT: add --fullcone option to MASQUERADE target
+
+Adds a --fullcone flag to the MASQUERADE target that sets
+NF_NAT_RANGE_FULLCONE in the range flags. The kernel patch 984
+interprets this flag to enable SONiC-style 3-tuple fullcone NAT.
+
+Since iptables 1.8.x merged SNAT/DNAT/MASQUERADE/REDIRECT into a
+single libxt_NAT.c file, --fullcone is added to MASQUERADE_opts[]
+only — other targets ignore it.
+---
+--- a/extensions/libxt_NAT.c
++++ b/extensions/libxt_NAT.c
+@@ -18,6 +18,10 @@
+ #include <linux/netfilter_ipv6/ip6_tables.h>
+ #include <linux/netfilter/nf_nat.h>
+
++#ifndef NF_NAT_RANGE_FULLCONE
++#define NF_NAT_RANGE_FULLCONE		(1 << 10)
++#endif
++
+ #define TO_IPV4_MRC(ptr) ((const struct nf_nat_ipv4_multi_range_compat *)(ptr))
+ #define RANGE2_INIT_FROM_IPV4_MRC(ptr) {			\
+ 	.flags		= TO_IPV4_MRC(ptr)->range[0].flags,	\
+@@ -40,6 +44,7 @@ enum {
  	O_RANDOM,
-+	O_FULLCONE,
  	O_RANDOM_FULLY,
+ 	O_PERSISTENT,
++	O_FULLCONE,
  };
 
-@@ -23,13 +24,18 @@ static void MASQUERADE_help(void)
+ static void SNAT_help(void)
+@@ -59,7 +64,9 @@ static void MASQUERADE_help(void)
  " --random\n"
  "				Randomize source port.\n"
  " --random-fully\n"
 -"				Fully randomize source port.\n");
 +"				Fully randomize source port.\n"
 +" --fullcone\n"
-+"				SONiC-style fullcone NAT.\n");
++"				SONiC-style fullcone NAT (3-tuple uniqueness).\n");
  }
 
-+#define NF_NAT_RANGE_FULLCONE (1 << 10)
-+
- static const struct xt_option_entry MASQUERADE_opts[] = {
+ static void DNAT_help(void)
+@@ -105,6 +112,7 @@ static const struct xt_option_entry MASQ
  	{.name = "to-ports", .id = O_TO_PORTS, .type = XTTYPE_STRING},
  	{.name = "random", .id = O_RANDOM, .type = XTTYPE_NONE},
  	{.name = "random-fully", .id = O_RANDOM_FULLY, .type = XTTYPE_NONE},
@@ -28,33 +50,30 @@
  	XTOPT_TABLEEND,
  };
 
-@@ -104,6 +109,9 @@ static void MASQUERADE_parse(struct xt_o
+@@ -253,6 +261,9 @@ static void __NAT_parse(struct xt_option
  	case O_RANDOM_FULLY:
- 		mr->range[0].flags |=  NF_NAT_RANGE_PROTO_RANDOM_FULLY;
+ 		range->flags |= NF_NAT_RANGE_PROTO_RANDOM_FULLY;
  		break;
 +	case O_FULLCONE:
-+		mr->range[0].flags |= NF_NAT_RANGE_FULLCONE;
++		range->flags |= NF_NAT_RANGE_FULLCONE;
 +		break;
  	}
  }
 
-@@ -126,6 +134,9 @@ MASQUERADE_print(const void *ip, const s
-
- 	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
- 		printf(" random-fully");
-+
+@@ -277,6 +288,7 @@ static void NAT_parse(struct xt_option_c
+ 	case O_PERSISTENT:
+ 	case O_RANDOM:
+ 	case O_RANDOM_FULLY:
++	case O_FULLCONE:
+ 		mr->range->flags |= range.flags;
+ 		break;
+ 	}
+@@ -368,7 +380,9 @@ static void __NAT_print(const struct nf_
+ 		printf(" %srandom-fully", flag_pfx);
+ 	if (r->flags & NF_NAT_RANGE_PERSISTENT)
+ 		printf(" %spersistent", flag_pfx);
 +	if (r->flags & NF_NAT_RANGE_FULLCONE)
-+		printf(" fullcone");
++		printf(" %sfullcone", flag_pfx);
  }
 
- static void
-@@ -145,7 +156,10 @@ MASQUERADE_save(const void *ip, const st
-
- 	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
- 		printf(" --random-fully");
-+
-+	if (r->flags & NF_NAT_RANGE_FULLCONE)
-+		printf(" --fullcone");
- }
-
- static int MASQUERADE_xlate(struct xt_xlate *xl,
+ static int
