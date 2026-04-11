@@ -5,9 +5,19 @@
 #   cd /path/to/openwrt && curl -sSL https://raw.githubusercontent.com/mufeng05/openwrt-sonic-fullcone/master/add_sonic_fullcone.sh | bash
 #
 # Prerequisites:
-#   ./scripts/feeds update -a && ./scripts/feeds install -a
+#   - OpenWrt source tree with kernel 6.6 / 6.12 / 6.18
+#   - ./scripts/feeds update -a && ./scripts/feeds install -a
+#   - git, curl installed
 
 set -e
+
+# --- Check required tools ---
+for tool in git; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "Error: '$tool' is required but not found in PATH."
+        exit 1
+    fi
+done
 
 # --- Check environment ---
 if ! [ -d "./package" ] || ! [ -d "./target" ]; then
@@ -16,12 +26,16 @@ if ! [ -d "./package" ] || ! [ -d "./target" ]; then
 fi
 
 # --- Clone repo to temp dir ---
+TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
-TMPDIR=$(mktemp -d) || exit 1
 
 REPO="https://github.com/mufeng05/openwrt-sonic-fullcone"
 echo "Cloning $REPO ..."
-git clone --depth=1 --single-branch "$REPO" "$TMPDIR/sonic-fullcone" || exit 1
+if ! git clone --depth=1 --single-branch "$REPO" "$TMPDIR/sonic-fullcone" 2>&1; then
+    echo "Error: failed to clone $REPO"
+    echo "Check your network connection and try again."
+    exit 1
+fi
 SRC="$TMPDIR/sonic-fullcone"
 
 # --- Detect kernel versions ---
@@ -144,6 +158,9 @@ fi
 
 echo ""
 echo "=== Done: $applied applied, $skipped skipped ==="
+if [ "$skipped" -gt 0 ]; then
+    echo "Warning: some patches were skipped. Run './scripts/feeds update -a && ./scripts/feeds install -a' and re-run this script if LuCI was skipped."
+fi
 echo ""
 echo "Next steps:"
 echo "  make menuconfig    # no extra options needed"
@@ -165,3 +182,9 @@ echo "  uci add_list firewall.@zone[1].fullcone_src='192.168.1.100'"
 echo "  uci add_list firewall.@zone[1].fullcone_src='192.168.1.200'"
 echo ""
 echo "  uci commit firewall && /etc/init.d/firewall restart"
+echo ""
+echo "Verify:"
+echo "  # fw4 (nftables)"
+echo "  nft list ruleset | grep fullcone"
+echo "  # fw3 (iptables)"
+echo "  iptables -t nat -L zone_wan_postrouting -n -v | grep FULLCONE"

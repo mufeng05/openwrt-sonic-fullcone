@@ -19,6 +19,12 @@
 
 6.6、6.12、6.18（三个版本共用同一份补丁——相关的 nf_nat_core.c 结构完全一致）
 
+## 先决条件
+
+- OpenWrt 源码树（master 或 23.05+，其他版本未测试）
+- 内核 6.6 / 6.12 / 6.18
+- 主机已安装 `git`、`curl`
+
 ## 安装
 
 在 OpenWrt 源码目录下执行：
@@ -32,11 +38,54 @@
 curl -sSL https://raw.githubusercontent.com/mufeng05/openwrt-sonic-fullcone/master/add_sonic_fullcone.sh | bash
 
 # 编译
-make menuconfig   # 无需额外勾选，fullcone 编译进 nft_masq 模块
+make menuconfig   # 无需额外勾选，fullcone 编译进现有 nft_masq.ko / xt_MASQUERADE.ko 模块
 make -j$(nproc)
 ```
 
 脚本会自动 clone 仓库、检测内核版本、复制补丁到对应位置，完成后自动清理临时文件。
+
+## 卸载
+
+删除补丁文件后重新编译即可：
+
+```bash
+rm -f target/linux/generic/hack-*/984-add-sonic-fullcone-*.patch
+rm -f target/linux/generic/hack-*/985-add-sonic-fullcone-*.patch
+rm -f target/linux/generic/hack-*/986-add-sonic-fullcone-*.patch
+rm -f package/network/utils/iptables/patches/901-sonic-fullcone.patch
+rm -f package/network/config/firewall*/patches/001-sonic-fullcone.patch
+rm -f feeds/luci/applications/luci-app-firewall/patches/001-add-fullcone-options.patch
+
+# 清理编译缓存
+make target/linux/clean
+make package/network/utils/iptables/clean
+make package/network/config/firewall/clean       # 如果存在
+make package/network/config/firewall4/clean      # 如果存在
+make package/feeds/luci/luci-app-firewall/clean
+
+# 重新编译
+make -j$(nproc)
+```
+
+注意：libnftnl 和 nftables 补丁（添加 `fullcone` 关键字）保留即可——它们不会影响普通行为。
+
+## 验证安装
+
+刷机后检查：
+
+```bash
+# 1. 确认 nftables fullcone 表达式可用（fw4）
+echo 'add table ip test; add chain ip test t { fullcone; }' | nft -c -f -
+# 没报错说明内核支持
+
+# 2. 检查规则是否生成（取决于 UCI 配置）
+nft list ruleset | grep fullcone                            # fw4
+iptables -t nat -S | grep FULLCONE                          # fw3
+
+# 3. 测试 NAT 类型（局域网电脑上）
+pystun3   # 或 Windows 上用 NatTypeTester
+# 结果应为 "Full Cone"
+```
 
 ## 配置逻辑
 
@@ -227,6 +276,8 @@ firewall/
 | 协议支持 | 全部 L4 | 仅 UDP | 仅 UDP | 仅 UDP |
 | 清理机制 | 自动（conntrack 生命周期） | Workqueue GC | Workqueue GC | 期望超时 |
 | Per-rule 控制 | 支持（flag bit） | 不支持 | 不支持 | 不支持 |
+| EIM + EIF | 双钩子（PRE+POST）自动 | 双钩子自动 | 双钩子自动 | 依赖 helper 机制 |
+| 额外内核模块 | 无（嵌入 nf_nat/nft_masq/xt_MASQUERADE） | 独立 .ko | 独立 .ko | 无（in-tree patch） |
 
 ## 致谢
 
