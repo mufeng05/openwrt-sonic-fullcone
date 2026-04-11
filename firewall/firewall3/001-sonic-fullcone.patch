@@ -76,6 +76,18 @@ providing full EIM+EIF.
  	INIT_LIST_HEAD(&zone->old_addrs);
 
  	zone->enabled = true;
+@@ -311,6 +317,11 @@ fw3_load_zones(struct fw3_state *state,
+ 		if (zone->masq)
+ 		{
+ 			fw3_setbit(zone->flags[0], FW3_FLAG_SNAT);
++			/* SONiC fullcone needs PREROUTING for reverse mapping (EIF),
++			 * so request DNAT chain creation when fullcone is enabled.
++			 */
++			if (defs->fullcone && zone->fullcone)
++				fw3_setbit(zone->flags[0], FW3_FLAG_DNAT);
+ 		}
+
+ 		if (zone->custom_chains)
 @@ -627,6 +633,11 @@ print_zone_rule(struct fw3_ipt_handle *h
  	struct fw3_address *msrc;
  	struct fw3_address *mdest;
@@ -88,10 +100,10 @@ providing full EIM+EIF.
 
  	if (!fw3_is_family(zone, handle->family))
  		return;
-@@ -755,9 +766,78 @@ print_zone_rule(struct fw3_ipt_handle *h
+@@ -755,9 +766,80 @@ print_zone_rule(struct fw3_ipt_handle *h
  				{
- 					r = fw3_ipt_rule_new(handle);
- 					fw3_ipt_rule_src_dest(r, msrc, mdest);
+-					r = fw3_ipt_rule_new(handle);
+-					fw3_ipt_rule_src_dest(r, msrc, mdest);
 -					fw3_ipt_rule_target(r, "MASQUERADE");
 -					fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
 +					if (has_fc_filter)
@@ -153,6 +165,8 @@ providing full EIM+EIF.
 +					else if (zone_fullcone)
 +					{
 +						/* All traffic fullcone: POSTROUTING + PREROUTING */
++						r = fw3_ipt_rule_new(handle);
++						fw3_ipt_rule_src_dest(r, msrc, mdest);
 +						fw3_ipt_rule_target(r, "FULLCONE");
 +						fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
 +						r = fw3_ipt_rule_new(handle);
@@ -162,6 +176,8 @@ providing full EIM+EIF.
 +					else
 +					{
 +						/* Standard masquerade */
++						r = fw3_ipt_rule_new(handle);
++						fw3_ipt_rule_src_dest(r, msrc, mdest);
 +						fw3_ipt_rule_target(r, "MASQUERADE");
 +						fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
 +					}

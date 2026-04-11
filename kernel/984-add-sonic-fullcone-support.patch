@@ -275,7 +275,7 @@ Signed-off-by: Akhilesh Samineni <akhilesh.samineni@broadcom.com>
 +	if (maniptype == NF_NAT_MANIP_DST) {
 +		if (nat_range.flags & NF_NAT_RANGE_FULLCONE) {
 +			/* Destination IP range does not apply when fullcone flag is set. */
-+			nat_range.min_addr.ip = nat_range.max_addr.ip = orig_tuple->dst.u3.ip;
++			nat_range.min_addr = nat_range.max_addr = orig_tuple->dst.u3;
 +			nat_range.min_proto.all = nat_range.max_proto.all = 0;
 +
 +			/* If this dstip/proto/dst-proto-part is mapped currently
@@ -376,13 +376,15 @@ Signed-off-by: Akhilesh Samineni <akhilesh.samineni@broadcom.com>
  	spin_unlock_bh(&nf_nat_locks[h % CONNTRACK_LOCKS]);
  }
 
-@@ -1138,12 +1257,17 @@ static int __init nf_nat_init(void)
+@@ -1138,12 +1257,19 @@ static int __init nf_nat_init(void)
  	if (!nf_nat_bysource)
  		return -ENOMEM;
 
 +	nf_nat_by_manip_src = nf_ct_alloc_hashtable(&nf_nat_htable_size, 0);
-+	if (!nf_nat_by_manip_src)
++	if (!nf_nat_by_manip_src) {
++		kvfree(nf_nat_bysource);
 +		return -ENOMEM;
++	}
 +
  	for (i = 0; i < CONNTRACK_LOCKS; i++)
  		spin_lock_init(&nf_nat_locks[i]);

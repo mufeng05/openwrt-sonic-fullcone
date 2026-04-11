@@ -20,15 +20,16 @@ NF_NAT_RANGE_FULLCONE flag and 3-tuple hash table.
 
 --- a/net/netfilter/nft_masq.c
 +++ b/net/netfilter/nft_masq.c
-@@ -14,6 +14,7 @@
+@@ -14,6 +14,8 @@
  #include <net/netfilter/nf_tables.h>
  #include <net/netfilter/nf_nat.h>
  #include <net/netfilter/nf_nat_masquerade.h>
++#include <net/netfilter/nf_conntrack.h>
 +#include <uapi/linux/netfilter/nf_nat.h>
 
  struct nft_masq {
  	u32			flags;
-@@ -128,6 +129,90 @@ static void nft_masq_eval(const struct n
+@@ -128,6 +129,94 @@ static void nft_masq_eval(const struct n
  	}
  }
 
@@ -104,9 +105,13 @@ NF_NAT_RANGE_FULLCONE flag and 3-tuple hash table.
 +		enum ip_conntrack_info ctinfo;
 +
 +		ct = nf_ct_get(pkt->skb, &ctinfo);
-+		if (ct)
-+			regs->verdict.code = nf_nat_setup_info(ct, &range,
-+							       NF_NAT_MANIP_DST);
++		if (!ct || (ctinfo != IP_CT_NEW && ctinfo != IP_CT_RELATED &&
++			    ctinfo != IP_CT_RELATED_REPLY)) {
++			regs->verdict.code = NF_ACCEPT;
++			return;
++		}
++		regs->verdict.code = nf_nat_setup_info(ct, &range,
++						       NF_NAT_MANIP_DST);
 +	}
 +}
 +

@@ -36,17 +36,20 @@ Usage:
  static void DNAT_help(void)
  {
  	printf(
-@@ -495,6 +507,9 @@ PSX_GEN(SNAT6, RANGE2_INIT_FROM_RANGE, \
+@@ -495,6 +507,12 @@ PSX_GEN(SNAT6, RANGE2_INIT_FROM_RANGE, \
  PSX_GEN(MASQUERADE, RANGE2_INIT_FROM_IPV4_MRC, \
  	AF_INET, "masq ports: ", "--to-ports ", true, "masquerade")
 
 +PSX_GEN(FULLCONE, RANGE2_INIT_FROM_IPV4_MRC, \
 +	AF_INET, "fullcone ports: ", "--to-ports ", true, "fullcone")
 +
++PSX_GEN(FULLCONE6, RANGE2_INIT_FROM_RANGE, \
++	AF_INET6, "fullcone ports: ", "--to-ports ", true, "fullcone")
++
  PSX_GEN(MASQUERADE6, RANGE2_INIT_FROM_RANGE, \
  	AF_INET6, "masq ports: ", "--to-ports ", true, "masquerade")
 
-@@ -564,7 +579,36 @@ static struct xtables_target nat_tg_reg[
+@@ -564,7 +579,34 @@ static struct xtables_target nat_tg_reg[
  		.xlate		= MASQUERADE6_xlate,
  	},
  	{
@@ -63,7 +66,6 @@ Usage:
 +		.x6_options	= MASQUERADE_opts,
 +		.xlate		= FULLCONE_xlate,
 +	},
-+#if defined(CONFIG_IPV6)
 +	{
 +		.name		= "FULLCONE",
 +		.version	= XTABLES_VERSION,
@@ -72,12 +74,11 @@ Usage:
 +		.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_range)),
 +		.help		= FULLCONE_help,
 +		.x6_parse	= NAT_parse6,
-+		.print		= MASQUERADE6_print,
-+		.save		= MASQUERADE6_save,
++		.print		= FULLCONE6_print,
++		.save		= FULLCONE6_save,
 +		.x6_options	= MASQUERADE_opts,
-+		.xlate		= MASQUERADE6_xlate,
++		.xlate		= FULLCONE6_xlate,
 +	},
-+#endif
 +	{
  		.name		= "REDIRECT",
  		.version	= XTABLES_VERSION,
