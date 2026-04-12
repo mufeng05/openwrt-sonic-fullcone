@@ -1,18 +1,13 @@
 From: openwrt-sonic-fullcone contributors
 Date: Wed, 9 Apr 2026 00:00:00 +0000
-Subject: [PATCH] firewall4: add SONiC fullcone NAT with per-zone,
- per-protocol and per-source-IP granularity
+Subject: [PATCH] firewall4: add SONiC fullcone NAT with per-zone and
+ per-protocol granularity
 
-Adds fullcone NAT support to firewall4 with four levels of control:
+Adds fullcone NAT support to firewall4 with three levels of control:
 
   1. Global default:  config defaults / option fullcone 1
   2. Per-zone:        config zone / option fullcone 1
   3. Per-protocol:    config zone / list fullcone_proto udp
-  4. Per-source-IP:   config zone / list fullcone_src 192.168.1.100
-
-When fullcone_src is specified, only traffic from those source IPs uses
-the fullcone expression; remaining traffic falls through to standard
-masquerade. fullcone_src and fullcone_proto can be combined.
 
 defaults.fullcone is a global gate. When off, all fullcone is disabled.
 When on, each zone must explicitly set fullcone=1 to activate.
@@ -20,66 +15,56 @@ When on, each zone must explicitly set fullcone=1 to activate.
 Requires kernel module nft_fullcone (from 985-add-sonic-fullcone-to-nft
 patch) and the corresponding libnftnl/nftables userspace patches.
 ---
- root/usr/share/firewall4/templates/ruleset.uc      |   56 +++++++++++-
- root/usr/share/firewall4/templates/zone-fullcone.uc |    7 +
- root/usr/share/ucode/fw4.uc                         |  113 +++++++++++++++++++-
- 3 files changed, 171 insertions(+), 5 deletions(-)
+ root/usr/share/firewall4/templates/ruleset.uc      |   48 +++++++++++-
+ root/usr/share/firewall4/templates/zone-fullcone.uc |    5 +
+ root/usr/share/ucode/fw4.uc                         |   88 +++++++++++++++++++-
+ 3 files changed, 137 insertions(+), 4 deletions(-)
  create mode 100644 root/usr/share/firewall4/templates/zone-fullcone.uc
 
 --- a/root/usr/share/firewall4/templates/ruleset.uc
 +++ b/root/usr/share/firewall4/templates/ruleset.uc
-@@ -327,6 +327,24 @@ table inet fw4 {
+@@ -327,6 +327,22 @@ table inet fw4 {
  {%   for (let redirect in fw4.redirects(`dstnat_${zone.name}`)): %}
  		{%+ include("redirect.uc", { fw4, zone, redirect }) %}
  {%   endfor %}
 +{%   if (zone.masq && zone.fullcone): %}
 +{%    if (zone.fullcone_proto && length(zone.fullcone_proto)): %}
 +{%     for (let proto in zone.fullcone_proto): %}
-+		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "dstnat", proto, fc_src: null }) %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "dstnat", proto }) %}
 +{%     endfor %}
 +{%    else %}
-+		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "dstnat", proto: null, fc_src: null }) %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "dstnat", proto: null }) %}
 +{%    endif %}
 +{%   endif %}
 +{%   if (zone.masq6 && zone.fullcone6): %}
 +{%    if (zone.fullcone_proto && length(zone.fullcone_proto)): %}
 +{%     for (let proto in zone.fullcone_proto): %}
-+		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "dstnat", proto, fc_src: null }) %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "dstnat", proto }) %}
 +{%     endfor %}
 +{%    else %}
-+		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "dstnat", proto: null, fc_src: null }) %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "dstnat", proto: null }) %}
 +{%    endif %}
 +{%   endif %}
  {%   fw4.includes('chain-append', `dstnat_${zone.name}`) %}
  	}
 
-@@ -337,20 +349,66 @@ table inet fw4 {
+@@ -337,20 +353,52 @@ table inet fw4 {
  {%   for (let redirect in fw4.redirects(`srcnat_${zone.name}`)): %}
  		{%+ include("redirect.uc", { fw4, zone, redirect }) %}
  {%   endfor %}
 -{%   if (zone.masq): %}
 +{%   if (zone.masq && zone.fullcone): %}
-+{%    if (zone.fullcone_src4 && length(zone.fullcone_src4)): %}
-+{%     if (zone.fullcone_proto && length(zone.fullcone_proto)): %}
-+{%      for (let proto in zone.fullcone_proto): %}
-+		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "srcnat", proto, fc_src: zone.fullcone_src4 }) %}
-+{%      endfor %}
-+{%     else %}
-+		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "srcnat", proto: null, fc_src: zone.fullcone_src4 }) %}
-+{%     endif %}
-+{%    elif (zone.fullcone_proto && length(zone.fullcone_proto)): %}
++{%    if (zone.fullcone_proto && length(zone.fullcone_proto)): %}
 +{%     for (let proto in zone.fullcone_proto): %}
-+		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "srcnat", proto, fc_src: null }) %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "srcnat", proto }) %}
 +{%     endfor %}
-+{%    else %}
-+		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "srcnat", proto: null, fc_src: null }) %}
-+{%    endif %}
-+{%    if (zone.fullcone_proto || zone.fullcone_src4): %}
 +{%     for (let saddrs in zone.masq4_src_subnets): %}
 +{%      for (let daddrs in zone.masq4_dest_subnets): %}
 +		{%+ include("zone-masq.uc", { fw4, zone, family: 4, saddrs, daddrs }) %}
 +{%      endfor %}
 +{%     endfor %}
++{%    else %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 4, direction: "srcnat", proto: null }) %}
 +{%    endif %}
 +{%   elif (zone.masq): %}
  {%    for (let saddrs in zone.masq4_src_subnets): %}
@@ -90,27 +75,17 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  {%   endif %}
 -{%   if (zone.masq6): %}
 +{%   if (zone.masq6 && zone.fullcone6): %}
-+{%    if (zone.fullcone_src6 && length(zone.fullcone_src6)): %}
-+{%     if (zone.fullcone_proto && length(zone.fullcone_proto)): %}
-+{%      for (let proto in zone.fullcone_proto): %}
-+		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "srcnat", proto, fc_src: zone.fullcone_src6 }) %}
-+{%      endfor %}
-+{%     else %}
-+		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "srcnat", proto: null, fc_src: zone.fullcone_src6 }) %}
-+{%     endif %}
-+{%    elif (zone.fullcone_proto && length(zone.fullcone_proto)): %}
++{%    if (zone.fullcone_proto && length(zone.fullcone_proto)): %}
 +{%     for (let proto in zone.fullcone_proto): %}
-+		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "srcnat", proto, fc_src: null }) %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "srcnat", proto }) %}
 +{%     endfor %}
-+{%    else %}
-+		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "srcnat", proto: null, fc_src: null }) %}
-+{%    endif %}
-+{%    if (zone.fullcone_proto || zone.fullcone_src6): %}
 +{%     for (let saddrs in zone.masq6_src_subnets): %}
 +{%      for (let daddrs in zone.masq6_dest_subnets): %}
 +		{%+ include("zone-masq.uc", { fw4, zone, family: 6, saddrs, daddrs }) %}
 +{%      endfor %}
 +{%     endfor %}
++{%    else %}
++		{%+ include("zone-fullcone.uc", { fw4, zone, family: 6, direction: "srcnat", proto: null }) %}
 +{%    endif %}
 +{%   elif (zone.masq6): %}
  {%    for (let saddrs in zone.masq6_src_subnets): %}
@@ -124,14 +99,11 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 
 --- /dev/null
 +++ b/root/usr/share/firewall4/templates/zone-fullcone.uc
-@@ -0,0 +1,10 @@
+@@ -0,0 +1,7 @@
 +{# /usr/share/firewall4/templates/zone-fullcone.uc
 +   proto:  string (L4 protocol name) or null
-+   fc_src: array of pre-formatted IP/CIDR strings or null
 + #}
 +		meta nfproto {{ fw4.nfproto(family) }}{{
-+		(fc_src && length(fc_src)) ? ` ${family == 6 ? 'ip6' : 'ip'} saddr { ${join(', ', fc_src)} }` : ''
-+		}}{{
 +		proto ? ` meta l4proto ${proto}` : ''
 +		}} fullcone comment "!fw4: {{ zone.name }} {{ fw4.nfproto(family, true) }} fullcone{{
 +		proto ? ` ${proto}` : '' }} NAT {{ direction }}"
@@ -179,7 +151,7 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  			input: [ "policy", "drop" ],
  			output: [ "policy", "drop" ],
  			forward: [ "policy", "drop" ],
-@@ -1980,6 +2002,13 @@ return {
+@@ -1980,6 +2001,13 @@ return {
 
  		delete defs.syn_flood;
 
@@ -193,15 +165,14 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  		this.state.defaults = defs;
  	},
 
-@@ -2034,3 +2055,7 @@ return {
+@@ -2034,3 +2055,5 @@ return {
  			masq6: [ "bool" ],
 
 +			fullcone: [ "bool" ],
 +			fullcone_proto: [ "protocol", null, PARSE_LIST ],
-+			fullcone_src: [ "network", null, PARSE_LIST ],
 +
  			extra: [ "string", null, UNSUPPORTED ],
-@@ -2149,6 +2179,51 @@ return {
+@@ -2149,6 +2172,36 @@ return {
  			}
  		}
 
@@ -210,9 +181,7 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 +		 * When on, each zone must explicitly set fullcone=1 to enable.
 +		 *
 +		 * Flatten fullcone_proto (list of protocol objects) into plain
-+		 * name strings, and fullcone_src (list of network objects, each
-+		 * with .addrs array) into per-family lists of formatted strings
-+		 * suitable for direct use in nftables templates.
++		 * name strings suitable for direct use in nftables templates.
 +		 */
 +		zone.fullcone = !!(this.state.defaults.fullcone && zone.fullcone);
 +		zone.fullcone6 = zone.fullcone;
@@ -229,31 +198,10 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 +			zone.fullcone_proto = null;
 +		}
 +
-+		if (zone.fullcone_src && length(zone.fullcone_src)) {
-+			let v4 = [], v6 = [];
-+			for (let net in zone.fullcone_src) {
-+				if (!net || !net.addrs)
-+					continue;
-+				for (let a in net.addrs) {
-+					if (!a)
-+						continue;
-+					if (a.family == 4)
-+						push(v4, this.cidr(a));
-+					else if (a.family == 6)
-+						push(v6, this.cidr(a));
-+				}
-+			}
-+			zone.fullcone_src4 = length(v4) ? v4 : null;
-+			zone.fullcone_src6 = length(v6) ? v6 : null;
-+		} else {
-+			zone.fullcone_src4 = null;
-+			zone.fullcone_src6 = null;
-+		}
-+
  		if (zone.mtu_fix && this.kernel < 0x040a0000) {
  			this.warn_section(data, "option mtu_fix requires kernel 4.10 or later, ignoring");
  			return;
-@@ -2205,11 +2265,22 @@ return {
+@@ -2205,11 +2258,22 @@ return {
  		zone.related_subnets = related_subnets;
  		zone.related_physdevs = related_physdevs;
 

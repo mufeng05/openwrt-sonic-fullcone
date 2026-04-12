@@ -113,7 +113,7 @@ else
     skipped=$((skipped + 1))
 fi
 
-# --- firewall4 (nftables/fw4): per-zone, per-proto, per-IP fullcone ---
+# --- firewall4 (nftables/fw4): per-zone, per-proto fullcone ---
 if [ -d "./package/network/config/firewall4" ]; then
     fw4_dir="./package/network/config/firewall4/patches"
     mkdir -p "$fw4_dir"
@@ -125,7 +125,7 @@ else
     skipped=$((skipped + 1))
 fi
 
-# --- firewall3 (iptables/fw3): per-zone, per-proto, per-IP fullcone ---
+# --- firewall3 (iptables/fw3): per-zone, per-proto fullcone ---
 if [ -d "./package/network/config/firewall" ]; then
     fw3_dir="./package/network/config/firewall/patches"
     mkdir -p "$fw3_dir"
@@ -176,10 +176,6 @@ echo "  uci set firewall.@zone[1].fullcone='1'"
 echo ""
 echo "  # Optional: restrict to UDP only"
 echo "  uci add_list firewall.@zone[1].fullcone_proto='udp'"
-echo ""
-echo "  # Optional: restrict to specific LAN IPs"
-echo "  uci add_list firewall.@zone[1].fullcone_src='192.168.1.100'"
-echo "  uci add_list firewall.@zone[1].fullcone_src='192.168.1.200'"
 echo ""
 echo "  uci commit firewall && /etc/init.d/firewall restart"
 echo ""

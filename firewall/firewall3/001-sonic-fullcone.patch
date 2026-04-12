@@ -1,14 +1,13 @@
 From: openwrt-sonic-fullcone contributors
 Date: Wed, 9 Apr 2026 00:00:00 +0000
-Subject: [PATCH] firewall3: add SONiC fullcone NAT with per-zone,
- per-protocol and per-source-IP control
+Subject: [PATCH] firewall3: add SONiC fullcone NAT with per-zone and
+ per-protocol control
 
-Adds zone-level fullcone option with fullcone_proto and fullcone_src
-lists to firewall3. defaults.fullcone is a global gate.
+Adds zone-level fullcone option with fullcone_proto list to firewall3.
+defaults.fullcone is a global gate.
 
 Uses native fw3 parse infrastructure (FW3_OPT / FW3_LIST) — no manual
-uci_lookup_option calls. fullcone_proto reuses fw3_parse_protocol,
-fullcone_src reuses fw3_parse_network (same as existing masq_src).
+uci_lookup_option calls. fullcone_proto reuses fw3_parse_protocol.
 
 Requires 984 (kernel NAT core) + 985 (kernel FULLCONE target) +
 901 (iptables userspace FULLCONE target) patches. Uses "FULLCONE"
@@ -16,9 +15,9 @@ target which supports both PREROUTING and POSTROUTING hooks,
 providing full EIM+EIF.
 ---
  defaults.c |  2 ++
- options.h  |  5 +++
- zones.c    | 94 ++++++++++++++++++++++++++++++++++++++++++++++++++---
- 3 files changed, 97 insertions(+), 4 deletions(-)
+ options.h  |  4 +++
+ zones.c    | 65 ++++++++++++++++++++++++++++++++++++++++++++++++++----
+ 3 files changed, 67 insertions(+), 4 deletions(-)
 
 --- a/defaults.c
 +++ b/defaults.c
@@ -41,42 +40,39 @@ providing full EIM+EIF.
  	struct fw3_limit syn_flood_rate;
 
  	bool tcp_syncookies;
-@@ -340,6 +341,10 @@ struct fw3_zone
+@@ -340,6 +341,9 @@ struct fw3_zone
 
  	bool mtu_fix;
 
 +	bool fullcone;
 +	struct list_head fullcone_proto;
-+	struct list_head fullcone_src;
 +
  	struct list_head cthelpers;
 
  	int log;
 --- a/zones.c
 +++ b/zones.c
-@@ -84,7 +84,11 @@ const struct fw3_option fw3_zone_opts[]
+@@ -84,7 +84,10 @@ const struct fw3_option fw3_zone_opts[]
 
  	FW3_OPT("mtu_fix",             bool,     zone,     mtu_fix),
  	FW3_OPT("custom_chains",       bool,     zone,     custom_chains),
 
 +	FW3_OPT("fullcone",            bool,     zone,     fullcone),
 +	FW3_LIST("fullcone_proto",     protocol, zone,     fullcone_proto),
-+	FW3_LIST("fullcone_src",       network,  zone,     fullcone_src),
 +
  	FW3_OPT("log",                 int,      zone,     log),
  	FW3_OPT("log_limit",           limit,    zone,     log_limit),
 
-@@ -214,7 +218,9 @@ fw3_alloc_zone(void)
+@@ -214,7 +217,8 @@ fw3_alloc_zone(void)
  	INIT_LIST_HEAD(&zone->masq_src);
  	INIT_LIST_HEAD(&zone->masq_dest);
  	INIT_LIST_HEAD(&zone->cthelpers);
 +	INIT_LIST_HEAD(&zone->fullcone_proto);
-+	INIT_LIST_HEAD(&zone->fullcone_src);
 
  	INIT_LIST_HEAD(&zone->old_addrs);
 
  	zone->enabled = true;
-@@ -311,6 +317,11 @@ fw3_load_zones(struct fw3_state *state,
+@@ -311,6 +315,11 @@ fw3_load_zones(struct fw3_state *state,
  		if (zone->masq)
  		{
  			fw3_setbit(zone->flags[0], FW3_FLAG_SNAT);
@@ -88,19 +84,18 @@ providing full EIM+EIF.
  		}
 
  		if (zone->custom_chains)
-@@ -627,6 +633,11 @@ print_zone_rule(struct fw3_ipt_handle *h
+@@ -627,6 +636,10 @@ print_zone_rule(struct fw3_ipt_handle *h
  	struct fw3_address *msrc;
  	struct fw3_address *mdest;
  	struct fw3_ipt_rule *r;
 +	struct fw3_defaults *defs = &state->defaults;
 +	struct fw3_protocol *proto;
-+	struct fw3_address *fc_src;
 +	bool zone_fullcone = defs->fullcone && zone->fullcone;
-+	bool has_fc_filter = zone_fullcone && (!list_empty(&zone->fullcone_proto) || !list_empty(&zone->fullcone_src));
++	bool has_fc_filter = zone_fullcone && !list_empty(&zone->fullcone_proto);
 
  	if (!fw3_is_family(zone, handle->family))
  		return;
-@@ -755,9 +766,80 @@ print_zone_rule(struct fw3_ipt_handle *h
+@@ -755,9 +768,52 @@ print_zone_rule(struct fw3_ipt_handle *h
  				{
 -					r = fw3_ipt_rule_new(handle);
 -					fw3_ipt_rule_src_dest(r, msrc, mdest);
@@ -108,51 +103,20 @@ providing full EIM+EIF.
 -					fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
 +					if (has_fc_filter)
 +					{
-+						/* Per-proto and/or per-src fullcone.
++						/* Per-proto fullcone.
 +						 * Each rule is emitted twice: POSTROUTING (SNAT)
 +						 * and PREROUTING (DNAT reverse mapping for EIF).
 +						 */
-+						if (!list_empty(&zone->fullcone_proto)) {
-+							list_for_each_entry(proto, &zone->fullcone_proto, list) {
-+								if (!list_empty(&zone->fullcone_src)) {
-+									list_for_each_entry(fc_src, &zone->fullcone_src, list) {
-+										if (!fw3_is_family(fc_src, handle->family))
-+											continue;
-+										/* POSTROUTING */
-+										r = fw3_ipt_rule_new(handle);
-+										fw3_ipt_rule_src_dest(r, fc_src, mdest);
-+										fw3_ipt_rule_proto(r, proto);
-+										fw3_ipt_rule_target(r, "FULLCONE");
-+										fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
-+									}
-+								} else {
-+									/* POSTROUTING */
-+									r = fw3_ipt_rule_new(handle);
-+									fw3_ipt_rule_src_dest(r, msrc, mdest);
-+									fw3_ipt_rule_proto(r, proto);
-+									fw3_ipt_rule_target(r, "FULLCONE");
-+									fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
-+								}
-+								/* PREROUTING (reverse mapping, per-proto) */
-+								r = fw3_ipt_rule_new(handle);
-+								fw3_ipt_rule_proto(r, proto);
-+								fw3_ipt_rule_target(r, "FULLCONE");
-+								fw3_ipt_rule_append(r, "zone_%s_prerouting", zone->name);
-+							}
-+						} else {
-+							/* src-only filter: POSTROUTING per src */
-+							list_for_each_entry(fc_src, &zone->fullcone_src, list) {
-+								if (!fw3_is_family(fc_src, handle->family))
-+									continue;
-+								r = fw3_ipt_rule_new(handle);
-+								fw3_ipt_rule_src_dest(r, fc_src, mdest);
-+								fw3_ipt_rule_target(r, "FULLCONE");
-+								fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
-+							}
-+							/* PREROUTING (single, no src/proto filter — kernel
-+							 * only returns matches for existing mappings).
-+							 */
++						list_for_each_entry(proto, &zone->fullcone_proto, list) {
++							/* POSTROUTING */
 +							r = fw3_ipt_rule_new(handle);
++							fw3_ipt_rule_src_dest(r, msrc, mdest);
++							fw3_ipt_rule_proto(r, proto);
++							fw3_ipt_rule_target(r, "FULLCONE");
++							fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
++							/* PREROUTING (reverse mapping, per-proto) */
++							r = fw3_ipt_rule_new(handle);
++							fw3_ipt_rule_proto(r, proto);
 +							fw3_ipt_rule_target(r, "FULLCONE");
 +							fw3_ipt_rule_append(r, "zone_%s_prerouting", zone->name);
 +						}

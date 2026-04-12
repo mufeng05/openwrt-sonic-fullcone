@@ -7,7 +7,6 @@ Add fullcone NAT configuration to the firewall web interface:
   - Global "Fullcone NAT" checkbox in General Settings (global gate)
   - Per-zone "Fullcone NAT" checkbox in zone General tab
   - Per-zone "Fullcone protocols" multi-value in zone Advanced tab
-  - Per-zone "Fullcone source IPs" dynamic list in zone Advanced tab
 
 defaults.fullcone is a global gate: when off, all zone-level fullcone
 settings are ignored. When on, each zone must explicitly enable fullcone.
@@ -25,20 +24,20 @@ settings are ignored. When on, each zone must explicitly enable fullcone.
 +
  		let p = [
  			s.option(form.ListValue, 'input', _('Input')),
-@@ -178,6 +189,12 @@
+@@ -178,6 +184,12 @@
  			return null;
  		};
 
 +		o = s.taboption('general', form.Flag, 'fullcone', _('Fullcone NAT'),
 +			_('Enable fullcone NAT for this zone. Requires the global Fullcone NAT gate to be enabled in General Settings. ' +
-+			  'Use "Fullcone protocols" and "Fullcone source IPs" in Advanced Settings to restrict scope.'));
++			  'Use "Fullcone protocols" in Advanced Settings to restrict scope.'));
 +		o.editable = true;
 +		o.depends('masq', '1');
 +
  		o = s.taboption('general', form.Flag, 'mtu_fix', _('MSS clamping'));
  		o.modalonly = true;
 
-@@ -279,4 +296,33 @@
+@@ -279,4 +291,22 @@
  		o.modalonly = true;
 
 +
@@ -58,16 +57,5 @@ settings are ignored. When on, each zone must explicitly enable fullcone.
 +		o.placeholder = _('All protocols');
 +		o.display_size = 5;
 +		o.delimiter = ' ';
-+
-+		o = s.taboption('advanced', form.DynamicList, 'fullcone_src',
-+			_('Fullcone source IPs'),
-+			_('Restrict fullcone NAT to specific LAN source IP addresses or CIDR subnets. ' +
-+			  'When empty, all source IPs use fullcone. ' +
-+			  'Example: 192.168.1.100 or 192.168.1.0/24'));
-+		o.depends('fullcone', '1');
-+		o.modalonly = true;
-+		o.optional = true;
-+		o.datatype = 'or(ipaddr,cidr)';
-+		o.placeholder = _('All source IPs');
 +
  		o = s.taboption('conntrack', form.Flag, 'masq_allow_invalid', _('Allow "invalid" traffic'),
