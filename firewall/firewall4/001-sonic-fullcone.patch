@@ -23,7 +23,7 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 
 --- a/root/usr/share/firewall4/templates/ruleset.uc
 +++ b/root/usr/share/firewall4/templates/ruleset.uc
-@@ -327,6 +327,22 @@ table inet fw4 {
+@@ -327,6 +327,24 @@ table inet fw4 {
  {%   for (let redirect in fw4.redirects(`dstnat_${zone.name}`)): %}
  		{%+ include("redirect.uc", { fw4, zone, redirect }) %}
  {%   endfor %}
@@ -48,7 +48,7 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  {%   fw4.includes('chain-append', `dstnat_${zone.name}`) %}
  	}
 
-@@ -337,20 +353,52 @@ table inet fw4 {
+@@ -337,20 +353,46 @@ table inet fw4 {
  {%   for (let redirect in fw4.redirects(`srcnat_${zone.name}`)): %}
  		{%+ include("redirect.uc", { fw4, zone, redirect }) %}
  {%   endfor %}
@@ -165,14 +165,14 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  		this.state.defaults = defs;
  	},
 
-@@ -2034,3 +2055,5 @@ return {
+@@ -2034,3 +2055,6 @@ return {
  			masq6: [ "bool" ],
 
 +			fullcone: [ "bool" ],
 +			fullcone_proto: [ "protocol", null, PARSE_LIST ],
 +
  			extra: [ "string", null, UNSUPPORTED ],
-@@ -2149,6 +2172,36 @@ return {
+@@ -2149,6 +2172,28 @@ return {
  			}
  		}
 
