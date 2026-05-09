@@ -1,5 +1,7 @@
 # openwrt-sonic-fullcone
 
+简体中文 | [English](./README.en.md)
+
 适用于 OpenWrt 的 SONiC 风格全锥形 NAT（Full Cone NAT），支持 per-zone、per-protocol 粒度控制。
 
 ## 这是什么
