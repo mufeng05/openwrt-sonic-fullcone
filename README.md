@@ -25,9 +25,11 @@
 
 ### 先决条件
 
-- OpenWrt 源码树（master 或 23.05+，其他版本未测试）
+- OpenWrt 源码树（master / 25.12 / 24.10）
 - 内核 6.6 / 6.12 / 6.18
 - 主机已安装 `git`、`curl`
+
+> 23.05 已不再支持：该分支的 iptables 1.8.8 没有 `extensions/libxt_NAT.c`（1.8.9 才引入），firewall4 补丁也有 hunk 无法应用。
 
 ### 一键安装
 
@@ -47,6 +49,10 @@ make -j$(nproc)
 ```
 
 脚本会自动 clone 仓库、检测内核版本、复制补丁到对应位置，完成后自动清理临时文件。
+
+> **注意**：除了复制补丁，脚本还会往 `package/libs/libnftnl/Makefile` 里加一行 `PKG_FIXUP:=autoreconf`。
+> 因为 libnftnl 补丁改了 `src/Makefile.am`，会触发 automake 用打包时的确切版本（libnftnl 1.3.1 是 `automake-1.17`）重新生成 `Makefile.in`，而该版本在构建环境中通常不存在，导致 `automake-1.17: command not found`。
+> 这是对 OpenWrt 源码树本身的修改，`git pull` 更新源码后会被还原，届时**重新执行一次本脚本**即可。已经编译失败过的话，还需要 `make package/libs/libnftnl/clean` 再编。
 
 ### 卸载
 

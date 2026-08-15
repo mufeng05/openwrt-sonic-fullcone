@@ -25,9 +25,11 @@ The kernel patch adds a second hash table inside conntrack (`nat_by_manip_src`),
 
 ### Prerequisites
 
-- An OpenWrt source tree (master or 23.05+; other versions untested)
+- An OpenWrt source tree (master / 25.12 / 24.10)
 - Kernel 6.6 / 6.12 / 6.18
 - `git` and `curl` available on the build host
+
+> 23.05 is no longer supported: its iptables 1.8.8 has no `extensions/libxt_NAT.c` (added in 1.8.9), and two hunks of the firewall4 patch no longer apply.
 
 ### One-shot install
 
@@ -47,6 +49,10 @@ make -j$(nproc)
 ```
 
 The script clones the repo, detects the kernel version, copies the patches into the right places, and cleans up temporary files when done.
+
+> **Note**: besides copying patches, the script also adds `PKG_FIXUP:=autoreconf` to `package/libs/libnftnl/Makefile`.
+> The libnftnl patch touches `src/Makefile.am`, which makes automake try to regenerate `Makefile.in` using the exact version that produced the tarball (`automake-1.17` for libnftnl 1.3.1). That version is usually absent from the build environment, so the build fails with `automake-1.17: command not found`.
+> This edits the OpenWrt source tree itself, so a `git pull` of the tree reverts it — just **re-run this script** afterwards. If the build already failed once, also run `make package/libs/libnftnl/clean` before rebuilding.
 
 ### Uninstall
 

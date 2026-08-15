@@ -94,6 +94,20 @@ if [ -d "./package/libs/libnftnl" ]; then
     nftnl_dir="./package/libs/libnftnl/patches"
     mkdir -p "$nftnl_dir"
     cp -f "$SRC/patches/libnftnl/001-libnftnl-add-fullcone-expression-support.patch" "$nftnl_dir/"
+
+    # The patch touches src/Makefile.am, making it newer than the pre-generated
+    # src/Makefile.in shipped in the tarball. make then tries to regenerate
+    # Makefile.in with the exact automake version that produced it (automake-1.17
+    # for libnftnl 1.3.1), which does not exist in the build environment --
+    # OpenWrt's own host tools provide automake 1.18.x only. PKG_FIXUP:=autoreconf
+    # regenerates the build system with whatever autotools OpenWrt ships.
+    nftnl_mk="./package/libs/libnftnl/Makefile"
+    if [ -f "$nftnl_mk" ] && ! grep -q '^PKG_FIXUP:=.*autoreconf' "$nftnl_mk"; then
+        awk '!ins && /^include \$\(INCLUDE_DIR\)\/package\.mk/ { print "PKG_FIXUP:=autoreconf"; print ""; ins=1 } { print }' \
+            "$nftnl_mk" > "$nftnl_mk.tmp" && mv "$nftnl_mk.tmp" "$nftnl_mk"
+        echo "[libnftnl] PKG_FIXUP:=autoreconf added to package Makefile"
+    fi
+
     echo "[libnftnl] applied"
     applied=$((applied + 1))
 else
