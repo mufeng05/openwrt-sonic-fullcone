@@ -17,10 +17,10 @@ Usage:
 ---
 --- a/extensions/libxt_NAT.c
 +++ b/extensions/libxt_NAT.c
-@@ -60,6 +60,18 @@ static void MASQUERADE_help(void)
+@@ -64,6 +64,18 @@ static void MASQUERADE_help(void)
  "				Fully randomize source port.\n");
  }
-
+ 
 +static void FULLCONE_help(void)
 +{
 +	printf(
@@ -36,10 +36,10 @@ Usage:
  static void DNAT_help(void)
  {
  	printf(
-@@ -495,6 +507,12 @@ PSX_GEN(SNAT6, RANGE2_INIT_FROM_RANGE, \
+@@ -492,6 +504,12 @@ PSX_GEN(SNAT6, RANGE2_INIT_FROM_RANGE, \
  PSX_GEN(MASQUERADE, RANGE2_INIT_FROM_IPV4_MRC, \
  	AF_INET, "masq ports: ", "--to-ports ", true, "masquerade")
-
+ 
 +PSX_GEN(FULLCONE, RANGE2_INIT_FROM_IPV4_MRC, \
 +	AF_INET, "fullcone ports: ", "--to-ports ", true, "fullcone")
 +
@@ -48,8 +48,8 @@ Usage:
 +
  PSX_GEN(MASQUERADE6, RANGE2_INIT_FROM_RANGE, \
  	AF_INET6, "masq ports: ", "--to-ports ", true, "masquerade")
-
-@@ -564,7 +579,34 @@ static struct xtables_target nat_tg_reg[
+ 
+@@ -553,6 +571,33 @@ static struct xtables_target nat_tg_reg[
  		.xlate		= MASQUERADE6_xlate,
  	},
  	{

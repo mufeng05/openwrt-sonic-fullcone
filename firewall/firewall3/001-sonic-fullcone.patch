@@ -21,57 +21,55 @@ providing full EIM+EIF.
 
 --- a/defaults.c
 +++ b/defaults.c
-@@ -46,6 +46,8 @@ const struct fw3_option fw3_flag_opts[]
- 	FW3_OPT("synflood_protect",    bool,     defaults, syn_flood),
+@@ -49,6 +49,8 @@ const struct fw3_option fw3_flag_opts[]
  	FW3_OPT("synflood_rate",       limit,    defaults, syn_flood_rate),
  	FW3_OPT("synflood_burst",      int,      defaults, syn_flood_rate.burst),
-+
+ 
 +	FW3_OPT("fullcone",           bool,     defaults, fullcone),
-
++
  	FW3_OPT("tcp_syncookies",      bool,     defaults, tcp_syncookies),
  	FW3_OPT("tcp_ecn",             int,      defaults, tcp_ecn),
+ 	FW3_OPT("tcp_window_scaling",  bool,     defaults, tcp_window_scaling),
 --- a/options.h
 +++ b/options.h
-@@ -267,6 +267,7 @@ struct fw3_defaults
- 	bool drop_invalid;
-
+@@ -297,6 +297,7 @@ struct fw3_defaults
+ 	enum fw3_reject_code any_reject_code;
+ 
  	bool syn_flood;
 +	bool fullcone;
  	struct fw3_limit syn_flood_rate;
-
+ 
  	bool tcp_syncookies;
-@@ -340,6 +341,9 @@ struct fw3_zone
-
+@@ -343,6 +344,9 @@ struct fw3_zone
+ 
  	bool mtu_fix;
-
+ 
 +	bool fullcone;
 +	struct list_head fullcone_proto;
 +
  	struct list_head cthelpers;
-
+ 
  	int log;
 --- a/zones.c
 +++ b/zones.c
-@@ -84,7 +84,10 @@ const struct fw3_option fw3_zone_opts[]
-
+@@ -84,6 +84,9 @@ const struct fw3_option fw3_zone_opts[]
  	FW3_OPT("mtu_fix",             bool,     zone,     mtu_fix),
  	FW3_OPT("custom_chains",       bool,     zone,     custom_chains),
-
+ 
 +	FW3_OPT("fullcone",            bool,     zone,     fullcone),
 +	FW3_LIST("fullcone_proto",     protocol, zone,     fullcone_proto),
 +
  	FW3_OPT("log",                 int,      zone,     log),
  	FW3_OPT("log_limit",           limit,    zone,     log_limit),
-
-@@ -214,7 +217,8 @@ fw3_alloc_zone(void)
+ 
+@@ -216,6 +219,7 @@ fw3_alloc_zone(void)
  	INIT_LIST_HEAD(&zone->masq_src);
  	INIT_LIST_HEAD(&zone->masq_dest);
  	INIT_LIST_HEAD(&zone->cthelpers);
 +	INIT_LIST_HEAD(&zone->fullcone_proto);
-
+ 
  	INIT_LIST_HEAD(&zone->old_addrs);
-
- 	zone->enabled = true;
+ 
 @@ -311,6 +315,11 @@ fw3_load_zones(struct fw3_state *state,
  		if (zone->masq)
  		{
@@ -82,9 +80,9 @@ providing full EIM+EIF.
 +			if (defs->fullcone && zone->fullcone)
 +				fw3_setbit(zone->flags[0], FW3_FLAG_DNAT);
  		}
-
+ 
  		if (zone->custom_chains)
-@@ -627,6 +636,10 @@ print_zone_rule(struct fw3_ipt_handle *h
+@@ -670,6 +679,10 @@ print_zone_rule(struct fw3_ipt_handle *h
  	struct fw3_address *msrc;
  	struct fw3_address *mdest;
  	struct fw3_ipt_rule *r;
@@ -92,10 +90,12 @@ providing full EIM+EIF.
 +	struct fw3_protocol *proto;
 +	bool zone_fullcone = defs->fullcone && zone->fullcone;
 +	bool has_fc_filter = zone_fullcone && !list_empty(&zone->fullcone_proto);
-
+ 
  	if (!fw3_is_family(zone, handle->family))
  		return;
-@@ -755,9 +768,49 @@ print_zone_rule(struct fw3_ipt_handle *h
+@@ -753,10 +766,50 @@ print_zone_rule(struct fw3_ipt_handle *h
+ 					                    handle->family, false)) || first_dest;
+ 				     first_dest = false)
  				{
 -					r = fw3_ipt_rule_new(handle);
 -					fw3_ipt_rule_src_dest(r, msrc, mdest);

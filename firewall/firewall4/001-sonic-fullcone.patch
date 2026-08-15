@@ -47,8 +47,8 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 +{%   endif %}
  {%   fw4.includes('chain-append', `dstnat_${zone.name}`) %}
  	}
-
-@@ -337,20 +353,46 @@ table inet fw4 {
+ 
+@@ -337,14 +355,40 @@ table inet fw4 {
  {%   for (let redirect in fw4.redirects(`srcnat_${zone.name}`)): %}
  		{%+ include("redirect.uc", { fw4, zone, redirect }) %}
  {%   endfor %}
@@ -91,12 +91,6 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  {%    for (let saddrs in zone.masq6_src_subnets): %}
  {%     for (let daddrs in zone.masq6_dest_subnets): %}
  		{%+ include("zone-masq.uc", { fw4, zone, family: 6, saddrs, daddrs }) %}
- {%     endfor %}
- {%    endfor %}
- {%   endif %}
- {%   fw4.includes('chain-append', `srcnat_${zone.name}`) %}
- 	}
-
 --- /dev/null
 +++ b/root/usr/share/firewall4/templates/zone-fullcone.uc
 @@ -0,0 +1,7 @@
@@ -112,7 +106,7 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 @@ -489,6 +489,25 @@ function nft_try_hw_offload(devices) {
  	return (rc == 0);
  }
-
+ 
 +function nft_try_fullcone() {
 +	let nft_test =
 +		'add table inet fw4-fullcone-test; ' +
@@ -132,7 +126,7 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 +	return ok;
 +}
 +
-
+ 
  return {
  	read_kernel_version: function() {
 @@ -1475,6 +1494,7 @@ return {
@@ -145,16 +139,16 @@ patch) and the corresponding libnftnl/nftables userspace patches.
  			"drop"
 @@ -1946,6 +1966,7 @@ return {
  		}
-
+ 
  		let defs = this.parse_options(data, {
 +			fullcone: [ "bool", "0" ],
  			input: [ "policy", "drop" ],
  			output: [ "policy", "drop" ],
  			forward: [ "policy", "drop" ],
 @@ -1980,6 +2001,13 @@ return {
-
+ 
  		delete defs.syn_flood;
-
+ 
 +		if (defs.fullcone) {
 +			if (!nft_try_fullcone()) {
 +				delete defs.fullcone;
@@ -164,18 +158,21 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 +
  		this.state.defaults = defs;
  	},
-
-@@ -2034,3 +2055,6 @@ return {
+ 
+@@ -2005,6 +2033,9 @@ return {
+ 
  			masq6: [ "bool" ],
-
+ 
 +			fullcone: [ "bool" ],
 +			fullcone_proto: [ "protocol", null, PARSE_LIST ],
 +
  			extra: [ "string", null, UNSUPPORTED ],
-@@ -2149,6 +2172,28 @@ return {
+ 			extra_src: [ "string", null, UNSUPPORTED ],
+ 			extra_dest: [ "string", null, UNSUPPORTED ],
+@@ -2036,6 +2067,28 @@ return {
  			}
  		}
-
+ 
 +		/* SONiC fullcone: defaults.fullcone is a global gate.
 +		 * When off, all fullcone is disabled regardless of zone config.
 +		 * When on, each zone must explicitly set fullcone=1 to enable.
@@ -199,29 +196,29 @@ patch) and the corresponding libnftnl/nftables userspace patches.
 +		}
 +
  		if (zone.mtu_fix && this.kernel < 0x040a0000) {
- 			this.warn_section(data, "option mtu_fix requires kernel 4.10 or later, ignoring");
+ 			this.warn_section(data, "option 'mtu_fix' requires kernel 4.10 or later");
  			return;
-@@ -2205,11 +2258,22 @@ return {
+@@ -2205,10 +2258,21 @@ return {
  		zone.related_subnets = related_subnets;
  		zone.related_physdevs = related_physdevs;
-
+ 
 -		if (zone.masq || zone.masq6)
 +		if (zone.masq) {
- 			zone.dflags.snat = true;
++			zone.dflags.snat = true;
 +			if (zone.fullcone)
 +				zone.dflags.dnat = true;
 +		}
 +
 +		if (zone.masq6) {
-+			zone.dflags.snat = true;
+ 			zone.dflags.snat = true;
 +			if (zone.fullcone6)
 +				zone.dflags.dnat = true;
 +		}
-
+ 
 -		if ((zone.auto_helper && !(zone.masq || zone.masq6)) || length(zone.helper)) {
 +		if ((zone.auto_helper && !(zone.masq || zone.masq6 ||
 +		     zone.fullcone || zone.fullcone6)) ||
 +		    length(zone.helper)) {
  			zone.dflags.helper = true;
-
+ 
  			for (let helper in (length(zone.helper) ? zone.helper : this.state.helpers)) {
