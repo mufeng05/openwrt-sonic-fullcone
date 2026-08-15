@@ -14,9 +14,16 @@ DNAT reverse mapping on prerouting).
 
 Requires 984-add-sonic-fullcone-support.patch for the kernel-side
 NF_NAT_RANGE_FULLCONE flag and 3-tuple hash table.
+
+The .reduce member is set only when the kernel still provides the
+register tracking infrastructure. Upstream commit 6b94d081f81d
+("netfilter: nf_tables: remove register tracking infrastructure")
+dropped nft_expr_ops->reduce and NFT_REDUCE_READONLY, and it has been
+backported into the 6.6.y, 6.12.y and 6.18.y stable trees, so a
+LINUX_VERSION_CODE test would not work: key off the macro instead.
 ---
- net/netfilter/nft_masq.c | 95 ++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 95 insertions(+)
+ net/netfilter/nft_masq.c | 122 +++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 122 insertions(+)
 
 --- a/net/netfilter/nft_masq.c
 +++ b/net/netfilter/nft_masq.c
@@ -29,7 +36,7 @@ NF_NAT_RANGE_FULLCONE flag and 3-tuple hash table.
 
  struct nft_masq {
  	u32			flags;
-@@ -128,6 +129,94 @@ static void nft_masq_eval(const struct n
+@@ -128,6 +130,94 @@ static void nft_masq_eval(const struct n
  	}
  }
 
@@ -124,7 +131,7 @@ NF_NAT_RANGE_FULLCONE flag and 3-tuple hash table.
  static void
  nft_masq_ipv4_destroy(const struct nft_ctx *ctx, const struct nft_expr *expr)
  {
-@@ -228,6 +309,27 @@ static inline void nft_masq_module_exit_
+@@ -228,6 +318,29 @@ static inline void nft_masq_module_exit_
  static inline void nft_masq_module_exit_inet(void) {}
  #endif
 
@@ -137,7 +144,9 @@ NF_NAT_RANGE_FULLCONE flag and 3-tuple hash table.
 +	.destroy	= nft_fullcone_destroy,
 +	.dump		= nft_masq_dump,
 +	.validate	= nft_fullcone_validate,
++#ifdef NFT_REDUCE_READONLY
 +	.reduce		= NFT_REDUCE_READONLY,
++#endif
 +};
 +
 +static struct nft_expr_type nft_fullcone_type __read_mostly = {
@@ -152,7 +161,7 @@ NF_NAT_RANGE_FULLCONE flag and 3-tuple hash table.
  static int __init nft_masq_module_init(void)
  {
  	int ret;
-@@ -249,6 +351,13 @@ static int __init nft_masq_module_init(v
+@@ -249,6 +362,13 @@ static int __init nft_masq_module_init(v
  		return ret;
  	}
 
@@ -166,7 +175,7 @@ NF_NAT_RANGE_FULLCONE flag and 3-tuple hash table.
  	return ret;
  }
 
-@@ -257,11 +366,13 @@ static void __exit nft_masq_module_exit(
+@@ -257,10 +377,12 @@ static void __exit nft_masq_module_exit(
  	nft_masq_module_exit_ipv6();
  	nft_masq_module_exit_inet();
  	nft_unregister_expr(&nft_masq_ipv4_type);
