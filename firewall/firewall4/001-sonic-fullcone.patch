@@ -167,14 +167,14 @@ range, as in SONiC.
  
  return {
  	read_kernel_version: function() {
-@@ -1475,6 +1498,7 @@ return {
+@@ -1472,6 +1495,7 @@ return {
+ 			"helper",
+ 			"mark",
+ 			"dscp",
++			"fullcone",
  			"dnat",
  			"snat",
  			"masquerade",
-+			"fullcone",
- 			"accept",
- 			"reject",
- 			"drop"
 @@ -1946,6 +1970,7 @@ return {
  		}
  
